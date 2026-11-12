@@ -1,0 +1,90 @@
+{
+ "jsonrpc": "2.0",
+ "id": 2,
+ "result": {
+  "tools": [
+   {
+    "name": "tool_search",
+    "description": "Search and inspect Claireon tools. Pass `tool_name=\"<name>\"` for that tool's exact input schema, parameter tooltips, and example usage -- always do this before invoking a non-trivial tool. Otherwise `query` returns a rank-ordered tools[] list (bm25 + semantic, with abbreviation expansion: 'bp', 'dt'); narrow with `category`. Stateless and read-only. Tools listed here run via python_execute.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "query": {
+       "type": "string",
+       "description": "Search query to match against tool names and descriptions. Supports abbreviations (bp, bt, st, dt, pie, fx, etc.). Empty string returns all tools. Special form: 'select:nameA,nameB' returns full schema records for the named tools (deferred-tool selector).",
+       "default": ""
+      },
+      "mode": {
+       "type": "string",
+       "description": "Discovery mode. 'categories' returns just category names + tool counts (cheap discovery, ~200 bytes). Default (omitted) runs the full search/inspect pipeline.",
+       "enum": [
+        "categories"
+       ]
+      },
+      "category": {
+       "type": "string",
+       "description": "Filter by tool category. Empty string means no category filter.",
+       "default": ""
+      },
+      "max_results": {
+       "type": "integer",
+       "description": "Maximum number of tools to return.",
+       "default": 10
+      },
+      "detail": {
+       "type": "string",
+       "description": "Description detail level. 'brief' = one-line summary, 'standard' = concise description (default), 'full' = extended docs with examples and workflows.",
+       "default": "standard",
+       "enum": [
+        "brief",
+        "standard",
+        "full"
+       ]
+      },
+      "include_schema": {
+       "type": "boolean",
+       "description": "When true, include each tool's full input JSON Schema in the result.",
+       "default": false
+      },
+      "include_examples": {
+       "type": "boolean",
+       "description": "When true, include each tool's GetExampleUsage() string in the result.",
+       "default": false
+      },
+      "name": {
+       "type": "string",
+       "description": "RECOMMENDED PRE-FLIGHT before any python_execute call. When provided, returns the exact input schema, parameter tooltips, example usage, and full description for that tool name (bypasses search ranking). Forces include_schema=true and include_examples=true for the matched tool. Pass the bare tool name (e.g. 'blueprint_compile'); this is the same name used in `claireon.<name>(...)` from inside python_execute.",
+       "default": ""
+      },
+      "tool_name": {
+       "type": "string",
+       "description": "Deprecated alias for `name=`; will be removed in a follow-up. RECOMMENDED PRE-FLIGHT before any python_execute call. When provided, returns the exact input schema, parameter tooltips, example usage, and full description for that tool name (bypasses search ranking). Forces include_schema=true and include_examples=true for the matched tool. Pass the bare tool name (e.g. 'blueprint_compile'); this is the same name used in `claireon.<name>(...)` from inside python_execute.",
+       "default": ""
+      }
+     }
+    }
+   },
+   {
+    "name": "python_execute",
+    "description": "Run Python code in the Unreal Editor with access to the `claireon` Python module. Hundreds of tools are exposed under `claireon.<tool_name>(...)`, organised into these categories: anim, animbp, asset, attenuation, audio, behaviortree, blackboard, blend_space, bp, camera_asset, chooser, cmc, commandlet, component, concurrency, console, curve, data_asset, datatable, developer_settings, editor, engine, enum, eqs, feedback, foliage, gameplay, gas, input, instructions, landscape, landscape_spline, level, level_sequence, log, map, material, material_instance, mcp, metasound, niagara, pcg, pie, project, proxyasset, proxytable, python, session, skeleton, slate, soundclass, soundcue, soundmix, statetree, struct, test, trace, transaction, uclass, uobject, widgetbp, world, wp. Use `tool_search` to find specific tools by name or topic, and `tool_search(tool_name=\"...\")` to fetch a tool's full input schema and example usage before calling it.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "code": {
+       "type": "string",
+       "description": "Python code to execute. Has access to 'unreal' module and claireon.* bridge functions."
+      },
+      "quiet": {
+       "type": "boolean",
+       "default": false,
+       "description": "Suppress python_execute's OWN derived hint on this invocation (traceback and script-content nudges like 'use uobject_inspect instead of get_editor_property'). Advisories raised by inner claireon.* tool calls -- their hints, warnings and summaries -- are ALWAYS reported, quiet or not; they are rate-limited per key to at most once per invocation and coalesced with occurrence counts."
+      }
+     },
+     "required": [
+      "code"
+     ]
+    }
+   }
+  ]
+ }
+}

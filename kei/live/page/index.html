@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kei live</title>
+<link rel="stylesheet" href="/live.css">
+</head>
+<body>
+<div class="app">
+  <nav class="track" aria-label="Stages of the shot">
+    <div class="brand"><b>Kei</b><span>live</span></div>
+    <ol id="track"></ol>
+  </nav>
+  <main>
+    <header class="top">
+      <div>
+        <p class="shotname" id="shotname">Loading the shot</p>
+        <p class="request" id="request"></p>
+      </div>
+      <div class="live" id="live" role="status"><i></i><span>Connecting</span></div>
+    </header>
+    <div class="now" id="now"></div>
+    <div id="banner"></div>
+
+    <section class="lighttable" aria-label="Key poses">
+      <div class="lt-body">
+        <div class="glass" id="glass"></div>
+        <div class="detail" id="detail"></div>
+      </div>
+      <div class="controls">
+        <button class="btn play" id="play" aria-pressed="false" title="Play or pause (Space)"></button>
+        <label class="hint" for="speed">Speed</label>
+        <select id="speed"><option value="1">1x</option><option value="0.5">Half</option><option value="0.25">Quarter</option></select>
+        <button class="btn" id="prev" title="Left arrow">Previous key</button>
+        <button class="btn" id="next" title="Right arrow">Next key</button>
+        <span class="seg" id="placewrap" role="group" aria-label="How a loop plays"><button class="btn" id="inplace" aria-pressed="true">In place</button><button class="btn" id="moving" aria-pressed="false">Moving</button></span>
+        <span class="chip" id="loopchip"></span>
+        <button class="btn" id="onion" aria-pressed="true">Show the previous try</button>
+        <span class="sp"></span>
+        <label class="hint" for="ver">Try</label>
+        <select id="ver"></select>
+      </div>
+      <div class="ruler" id="ruler"></div>
+      <div class="ruler-key">
+        <span><i class="sym key"></i>Key</span><span><i class="sym extreme"></i>Extreme</span>
+        <span><i class="sym breakdown"></i>Breakdown</span><span><i class="sym band"></i>Frames a critic flagged</span>
+        <span><i class="sym dotsym"></i>Redrawn in this try</span>
+      </div>
+      <div class="strip" id="strip"></div>
+    </section>
+
+    <div class="two">
+      <section class="block">
+        <h2>What the critics said</h2>
+        <p class="lead" id="notes-lead">Two reviewers read every try of the plan, blocking and passes. Click a frame to see it on the table.</p>
+        <div class="notes" id="notes"></div>
+      </section>
+      <section class="block">
+        <h2>What happened</h2>
+        <p class="lead">Every try, answer and verdict, newest first.</p>
+        <ul class="feed" id="feed"></ul>
+      </section>
+    </div>
+
+    <section class="block" id="refs-block">
+      <h2>References</h2>
+      <p class="lead">What Kei read before planning, and how much it trusts each source.</p>
+      <div class="facts" id="facts"></div>
+      <div class="refs" id="refs"></div>
+    </section>
+
+    <section class="block">
+      <h2>Renders</h2>
+      <p class="lead" id="passes-lead">Each pass keeps its own folder, so earlier passes stay to compare.</p>
+      <div id="passes"></div>
+    </section>
+
+    <section class="block">
+      <h2>Sheets</h2>
+      <p class="lead">Every drawing Kei made for this shot, newest first.</p>
+      <div class="gallery" id="gallery"></div>
+    </section>
+
+  </main>
+</div>
+<dialog id="zoom"><div class="bar"><span id="zoom-cap"></span><button class="btn" id="zoom-close">Close</button></div><img id="zoom-img" alt=""></dialog>
+
+<script src="/live.js"></script>
+</body>
+</html>
