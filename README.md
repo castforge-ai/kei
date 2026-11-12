@@ -364,8 +364,8 @@ my-shots/
 
 ## First ten minutes
 
-1. Clone this repository and install the `kei` command from it: `pip install -e .` in the repository folder (Python
-   3.12 or newer).
+1. Install the `kei` command: `pip install kei-animator` (Python 3.12 or newer). To work on Kei itself, clone this
+   repository and run `pip install -e .` in it.
 2. Install the Kei skill for your agent. The skill is the folder `skill/kei` in this repository; copy it (or link it)
    into your agent's skills folder:
    - Claude Code: `~/.claude/skills/kei` for every project, or `.claude/skills/kei` inside one project folder.
@@ -374,7 +374,12 @@ my-shots/
 
    Start a new chat after you install it. If your agent does not list the skill, check its own documentation for
    the skills folder of your version: these folders are the ones Claude Code and Codex read as of November 2026.
-3. Open a chat in the folder where your shots will live and ask for an animation.
+3. Open a chat in the folder where your shots will live and ask for an animation, for example "animate a mannequin
+   running". The skill tells your agent to use Kei for any request to animate, even when you do not name Kei, and to run
+   `kei init` first if the folder has no `kei.toml`.
+
+   An agent decides for itself whether to load a skill, so for a sure result add one line to the project's `CLAUDE.md`
+   (Claude Code) or `AGENTS.md` (Codex): "For any request to animate, use the Kei skill and the kei command."
 
 Kei starts your separately installed agent tools (for example Claude Code or Codex) with your own account. What you
 may automate, your usage limits, any charges and how your data is handled depend on the provider, your plan and your

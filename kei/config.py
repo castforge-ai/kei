@@ -87,6 +87,13 @@ def _path(value, base: Path, key: str) -> Path | None:
     return base / value
 
 
+def example_config() -> Path:
+    """The example kei.toml that ships with Kei: inside the package when installed, beside it in a repository clone."""
+    here = Path(__file__).resolve().parent
+    inside = here / "kei.example.toml"
+    return inside if inside.is_file() else here.parent / "kei.example.toml"
+
+
 def load_config(path: Path) -> Config:
     path = Path(path)
     try:

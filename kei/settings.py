@@ -12,11 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from kei.config import (APPS as APP_CHOICES, LIVE_SWITCH, MAYA_SESSIONS as MAYA_SESSION_CHOICES, UNREAL_SESSIONS as UNREAL_SESSION_CHOICES,
+from kei.config import (APPS as APP_CHOICES, example_config, LIVE_SWITCH, MAYA_SESSIONS as MAYA_SESSION_CHOICES, UNREAL_SESSIONS as UNREAL_SESSION_CHOICES,
                         Config, ConfigError, load_config_text)
 from kei.toml_edit import TomlEditError, add_table, format_value, remove_array_table, set_value, unset_value
 
-EXAMPLE = Path(__file__).resolve().parent.parent / "kei.example.toml"
+EXAMPLE = example_config()
 Which = Callable[[str], "str | None"]
 CREDENTIAL = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}|[A-Z0-9_]*API_KEY\s*=|\bghp_[A-Za-z0-9]{20,}")
 BOM = b"\xef\xbb\xbf"

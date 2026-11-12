@@ -71,3 +71,23 @@ def test_the_readme_says_how_to_install_the_skill_for_claude_code_and_codex():
     assert ".claude/skills/kei" in part and ".agents/skills/kei" in part
     assert "Not built yet:\nthe skill entry point" not in text and "the skill entry point (First ten minutes)" \
         not in text
+
+
+def test_the_description_names_every_way_of_asking_to_animate_and_works_without_the_name_kei():
+    text = skill_text()
+    desc = re.match(r"---\nname: kei\ndescription: (.+)\n---\n", text).group(1).lower()
+    for word in ("animate", "mannequin", "walk", "run", "jump", "maya", "unreal", "even when the request does not name kei"):
+        assert word in desc, f"the skill description must mention {word!r}"
+    assert "instead of writing animation code" in desc
+
+
+def test_the_skill_sets_up_a_new_folder_before_the_first_shot():
+    text = skill_text()
+    assert "pip install kei-animator" in text and "`kei init`" in text
+    assert text.index("kei init") < text.index("kei run <shot> --request")
+
+
+def test_the_readme_says_how_to_make_kei_the_default_for_animation_requests():
+    readme = README.read_text(encoding="utf-8")
+    assert "pip install kei-animator" in readme
+    assert "For any request to animate, use the Kei skill and the kei command." in readme

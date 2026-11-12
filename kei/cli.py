@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ from kei.book import BookError
 from kei.characters import (CHARACTERS, CharacterError, characters_dir, imported_characters, load_character,
                             plan_character, rest_pose, shot_character)
 from kei.conductor import CHARACTER_ENV, NoCriticError, run_shot
-from kei.config import ConfigError, load_config
+from kei.config import ConfigError, example_config, load_config
 from kei.settings import SettingError
 from kei.signoff import SignOffError, approve_shot, note_refusal, note_shot, rejection
 from kei.models.model import ModelError
@@ -32,7 +33,7 @@ from kei.state import PAUSED, StateError, load_state, save_state
 
 EXIT_DONE, EXIT_ERROR, EXIT_NEEDS_HUMAN, EXIT_NEEDS_ANSWER, EXIT_NEEDS_APPROVAL, EXIT_PAUSED = 0, 1, 2, 3, 4, 5
 SIGN_OFF = 'approve with: kei approve <shot>, or send it back with: kei note <shot> --text "..."'
-EXAMPLE_CONFIG = Path(__file__).resolve().parent.parent / "kei.example.toml"
+EXAMPLE_CONFIG = example_config()
 
 
 def _config_path(arg: str | None) -> Path:
@@ -888,6 +889,22 @@ def _cmd_import(a) -> int:
     return EXIT_NEEDS_ANSWER
 
 
+def _cmd_init(a) -> int:
+    """Write ./kei.toml from the example, so a new folder is ready for `kei run`. Never overwrites a kei.toml."""
+    dest = Path.cwd() / "kei.toml"
+    if dest.exists():
+        print(f"kei.toml is already here ({dest}); left as it is. Start a shot with: kei run <shot> --request \"...\"")
+        return EXIT_DONE
+    dest.write_bytes(EXAMPLE_CONFIG.read_bytes())
+    print(f"wrote {dest} from the example: one animator seat and two critic seats, your own agent command lines.")
+    seats = load_config(dest)
+    missing = sorted({s.cmd[0] for s in [seats.animator, *seats.critics] if s.cmd and not shutil.which(s.cmd[0])})
+    if missing:
+        print("not found on your PATH: " + ", ".join(missing) + ". Install them, or change the seats with kei settings.")
+    print('Start a shot with: kei run <shot> --request "what to animate"')
+    return EXIT_DONE
+
+
 def _cmd_characters(a) -> int:
     print("built in: " + ", ".join(CHARACTERS))
     names = imported_characters()
@@ -1234,6 +1251,8 @@ def main(argv: list[str] | None = None) -> int:
     td.add_argument("--dry-run", action="store_true", help="only list the moves (the default)")
     td.add_argument("--apply", action="store_true", help="make the moves; a running shot is never moved")
     td.set_defaults(fn=_cmd_shots_tidy)
+    ini = sub.add_parser("init", help="write kei.toml here from the example, so this folder is ready for kei run")
+    ini.set_defaults(fn=_cmd_init)
     cs = sub.add_parser("characters", help="list the characters a shot can use, built in and imported")
     cs.set_defaults(fn=_cmd_characters)
     my = sub.add_parser("maya", help="animate in Maya: set a shot up, key a pass on the controls")

@@ -1,6 +1,6 @@
 [project]
 name = "kei-animator"
-version = "0.1.0"
+version = "0.1.1"
 description = "Kei Animator, by Castforge: an animation agent that keys motion by hand, stage by stage."
 requires-python = ">=3.12"
 license = "MIT"
@@ -20,6 +20,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 # The whole kei folder ships, data files included: the default rule book is kei/book/*.md.
 packages = ["kei"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"kei.example.toml" = "kei/kei.example.toml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
