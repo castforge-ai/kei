@@ -39,6 +39,7 @@ class FakeEditor:
         self.dirty: set[str] = set()
         self.saved: list[str] = []
         self.keys: list[dict] = []
+        self.batches: list[int] = []       # key frames in each set_keys call
         self.opened = None
         self.leave_changed = None
         self.user_dirty = None
@@ -105,18 +106,24 @@ class FakeEditor:
         return {"dirty": sorted(self.dirty)}
 
     def set_keys(self, inp):
+        """A batch of key frames in one call (inp["keys"]), or one frame given flat, as the editor script takes both."""
         seq = inp["sequence"]
-        self.sequences[seq]["keys"].append({"f": inp["frame"], "tangent": inp["tangent"], "controls": inp["controls"]})
-        self.keys.append(inp)
-        self.dirty.add(seq)
-        if self.user_dirty:
-            self.dirty.add(self.user_dirty)
-        clipped = []
-        if self.clip:
-            ctl, ch, reached = self.clip
-            if ctl in inp["controls"] and ch in inp["controls"][ctl]:
-                clipped.append({"control": ctl, "channel": ch, "asked": inp["controls"][ctl][ch], "reached": reached})
-        return {"keyed": sum(len(v) for v in inp["controls"].values()), "clipped": clipped}
+        batch = inp["keys"] if "keys" in inp else [inp]
+        self.batches.append(len(batch))
+        keyed, clipped = 0, []
+        for k in batch:
+            self.sequences[seq]["keys"].append({"f": k["frame"], "tangent": k["tangent"], "controls": k["controls"]})
+            self.keys.append({"sequence": seq, **{n: k[n] for n in ("frame", "tangent", "controls", "types")}})
+            self.dirty.add(seq)
+            if self.user_dirty:
+                self.dirty.add(self.user_dirty)
+            if self.clip:
+                ctl, ch, reached = self.clip
+                if ctl in k["controls"] and ch in k["controls"][ctl]:
+                    clipped.append({"control": ctl, "channel": ch, "asked": k["controls"][ctl][ch],
+                                    "reached": reached, "f": k["frame"]})
+            keyed += sum(len(v) for v in k["controls"].values())
+        return {"keyed": keyed, "clipped": clipped}
 
     def save_asset(self, inp):
         p = inp["path"]

@@ -37,7 +37,8 @@ KEYS = [{"f": 0, "foot_l_ik_ctrl.location.z": 0.0, "pelvis_ctrl.location.z": 90.
 def test_the_calls_are_recorded_in_order_make_dirty_keys_dirty_save_by_path(tmp_path):
     with ready(tmp_path, KEYS) as (shot, ed, fake):
         report = apply_keys(ed.client(), shot, "blocking")
-        assert fake.scripts == ["make_sequence", "dirty", "set_keys", "set_keys", "dirty", "save_asset"]
+        assert fake.scripts == ["make_sequence", "dirty", "set_keys", "dirty", "save_asset"]      # both key frames in one call
+        assert ed.batches == [2]
     assert ed.saved == ["/Game/Kei/walk_01/LS_walk_01_blocking_1"] and ed.save_all_calls == 0
     assert report["keys"] == 2 and report["saved"] == ed.saved[0] and report["tangents"] == "set"
     assert json.loads((shot / "out_blocking" / "unreal_report.json").read_text()) == report
@@ -108,3 +109,21 @@ def test_keys_at_one_frame_merge():
     keys = parse_keys({"rig": "unreal", "keys": [{"f": 1, "pelvis_ctrl.location.z": 1},
                                                  {"f": 1, "pelvis_ctrl.location.y": 2}]}, canned_rig(), "step")
     assert keys == [{"f": 1, "tangent": "step", "controls": {"pelvis_ctrl": {"location.z": 1, "location.y": 2}}}]
+
+
+def test_many_key_frames_go_in_few_calls_so_the_project_is_not_flooded_with_audit_files(tmp_path):
+    from kei.apps.unreal_keys import BATCH
+    keys = [{"f": n * 2, "pelvis_ctrl.location.z": 90.0 + n} for n in range(40)]
+    with ready(tmp_path, keys, name="long") as (shot, ed, fake):
+        report = apply_keys(ed.client(), shot, "long")
+    assert report["keys"] == 40 and len(ed.keys) == 40
+    assert ed.batches == [BATCH, BATCH, 40 - 2 * BATCH] and fake.scripts.count("set_keys") == 3
+    assert [k["frame"] for k in ed.keys] == [n * 2 for n in range(40)]          # in order, none lost
+
+
+def test_a_clipped_value_is_reported_with_its_frame_from_inside_a_batch(tmp_path):
+    keys = [{"f": 0, "foot_l_ik_ctrl.location.z": 0.0}, {"f": 12, "foot_l_ik_ctrl.location.z": 9.0}]
+    with ready(tmp_path, keys, name="clip") as (shot, ed, fake):
+        ed.clip = ("foot_l_ik_ctrl", "location.z", 5.0)
+        report = apply_keys(ed.client(), shot, "clip")
+    assert [c["f"] for c in report["clipped"]] == [0, 12] and report["clipped"][1]["reached"] == 5.0

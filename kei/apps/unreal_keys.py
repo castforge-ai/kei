@@ -64,6 +64,9 @@ def parse_keys(shot: dict, rig: dict, mode: str) -> list[dict]:
     return [frames[f] for f in sorted(frames)]
 
 
+BATCH = 15      # key frames in one editor call: few calls, and each one short enough to answer in time
+
+
 def apply_keys(client: Claireon, shot_dir: Path, pass_name: str, mode: str | None = None) -> dict:
     shot_dir = Path(shot_dir)
     out = shot_dir / f"out_{pass_name}"
@@ -85,11 +88,11 @@ def apply_keys(client: Claireon, shot_dir: Path, pass_name: str, mode: str | Non
     tick()                                  # the editor spawns the character one tick after the sequence opens
     before = run_script(client, "dirty.py", {})["dirty"]
     clipped, tangents = [], "set"
-    for k in keys:
-        got = run_script(client, "set_keys.py", {"sequence": seq, "frame": k["f"], "tangent": k["tangent"],
-                                                 "controls": k["controls"],
-                                                 "types": {c: types[c] for c in k["controls"]}})
-        clipped += [{**c, "f": k["f"]} for c in got.get("clipped", [])]
+    for i in range(0, len(keys), BATCH):        # a batch of key frames in one call: one audit file, not one per frame
+        got = run_script(client, "set_keys.py", {"sequence": seq, "keys": [
+            {"frame": k["f"], "tangent": k["tangent"], "controls": k["controls"],
+             "types": {c: types[c] for c in k["controls"]}} for k in keys[i:i + BATCH]]})
+        clipped += got.get("clipped", [])
         if str(got.get("tangents", "set")) != "set":
             tangents = got["tangents"]
     after = run_script(client, "dirty.py", {})["dirty"]

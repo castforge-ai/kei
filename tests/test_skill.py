@@ -98,3 +98,9 @@ def test_the_readme_is_not_marked_as_a_draft_and_the_install_text_covers_a_comma
     assert "PRE-RELEASE DRAFT" not in readme and not readme.lstrip().startswith("<!--")
     assert "python -m kei" in readme and "pipx install kei-animator" in readme
     assert "python -m kei" in skill_text()
+
+
+def test_the_skill_makes_the_agent_send_every_chat_answer_to_kei():
+    text = skill_text()
+    assert "MUST send their words to Kei with `kei answer" in text
+    assert "keeps showing the question until `kei answer` runs" in text

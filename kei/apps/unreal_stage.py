@@ -13,10 +13,14 @@ seat's run. kei run resumes at the same pass: it probes the target again first.
 """
 from __future__ import annotations
 
+import os
+import sys
+import time
 from pathlib import Path
 from typing import Callable
 
 from kei.apps.unreal import Claireon, NeedsHuman, UnrealError
+from kei.apps import unreal_memory
 from kei.apps.unreal_keys import apply_keys
 from kei.apps.unreal_readback import read_back
 from kei.apps.unreal_rig import load_rig, read_rig
@@ -24,6 +28,51 @@ from kei.apps.unreal_session import (Question, candidate_urls, choose_target, fi
                                      pick_character, probe_editor, save_target)
 from kei.characters import shot_character
 from kei.sample import ShotError, read_json
+
+WAIT_S = 300.0     # how long Kei waits for a busy editor (shaders compiling, assets loading) before it pauses the shot
+STEP_S = 15.0      # and how often it asks again
+
+
+def patience() -> float:
+    """Seconds to wait for the editor: KEI_UNREAL_WAIT_S when set (0 pauses at once), else WAIT_S."""
+    try:
+        return max(0.0, float(os.environ.get("KEI_UNREAL_WAIT_S", WAIT_S)))
+    except ValueError:
+        return WAIT_S
+
+
+def _say_waiting(what: str, wait: float) -> None:
+    print(f"kei: {what}; it may be busy (compiling shaders or loading). Asking again every {STEP_S:g} s for up to "
+          f"{wait / 60:g} minutes before pausing the shot.", file=sys.stderr, flush=True)
+
+
+def locate_waiting(target: dict, probe: Callable[[str], dict | None], sleep=time.sleep):
+    """locate, asked again every STEP_S while the editor does not answer, for up to patience() seconds."""
+    wait, waited = patience(), 0.0
+    while True:
+        editor = locate(target, probe)
+        if editor is not None or waited >= wait:
+            return editor
+        if waited == 0:
+            _say_waiting(f"the Unreal Editor does not answer at {target.get('url')}", wait)
+        sleep(STEP_S)
+        waited += STEP_S
+
+
+def connect_waiting(url: str, sleep=time.sleep) -> Claireon:
+    """_connect, tried again every STEP_S while the editor times out, for up to patience() seconds."""
+    wait, waited = patience(), 0.0
+    while True:
+        try:
+            return _connect(url)
+        except UnrealError:
+            if waited >= wait:
+                raise
+            if waited == 0:
+                _say_waiting("the Unreal Editor did not answer a call", wait)
+            sleep(STEP_S)
+            waited += STEP_S
+
 
 PAUSED_FILE = "PAUSED.md"
 HUMAN_FILE = "NEEDS_HUMAN.md"
@@ -91,7 +140,7 @@ def prepare(shot_dir: Path, config, probe: Callable[[str], dict | None] = probe_
         save_target(shot_dir, target)
     if target["kind"] != "open":
         return None
-    editor = locate(target, probe)
+    editor = locate_waiting(target, probe)
     if editor is None:
         return {"pause": f"the Unreal Editor for project {target.get('project') or 'unnamed'} does not answer at "
                          f"{target.get('url')}: open it with Claireon's server on (kei unreal setup lists the "
@@ -100,7 +149,7 @@ def prepare(shot_dir: Path, config, probe: Callable[[str], dict | None] = probe_
         return None
     try:
         character = pick_character(editor, config.unreal_mesh, config.unreal_control_rig)
-        read_rig(_connect(editor.url), shot_dir, character)
+        read_rig(connect_waiting(editor.url), shot_dir, character)
     except ValueError as e:
         return {"human": str(e)}
     except NeedsHuman as e:
@@ -121,7 +170,10 @@ def bake(shot_dir: Path, pass_name: str, probe: Callable[[str], dict | None] = p
     if editor is None:
         raise UnrealError(f"the Unreal Editor for project {target.get('project') or 'unnamed'} does not answer: open "
                           "it with Claireon's server on, then run kei export again")
-    return bake_shot(_connect(editor.url), shot_dir, pass_name)
+    unreal_memory.record(shot_dir, editor.url, f"{pass_name}: before the bake")
+    out = bake_shot(_connect(editor.url), shot_dir, pass_name)
+    unreal_memory.record(shot_dir, editor.url, f"{pass_name}: after the bake")
+    return out
 
 
 def tidy_shot(shot_dir: Path, probe: Callable[[str], dict | None] = probe_editor) -> dict:
@@ -146,15 +198,19 @@ def key_pass(shot_dir: Path, pass_name: str, config, probe: Callable[[str], dict
     if not target or target.get("kind") != "open":
         raise ShotError(f"{shot_dir} is not an Unreal shot: kei run --app unreal {shot_dir} chooses the editor")
     try:
-        editor = locate(target, probe)
+        editor = locate_waiting(target, probe)
         if editor is None:
             raise UnrealError(f"the Unreal Editor for project {target.get('project') or 'unnamed'} stopped "
                               "answering: open it again, then run the shot again")
-        client = _connect(editor.url)
+        client = connect_waiting(editor.url)
+        unreal_memory.record(shot_dir, editor.url, f"{pass_name}: before keying")
         report = apply_keys(client, shot_dir, pass_name)
         shot = read_json(shot_dir / f"out_{pass_name}" / "shot.json", "shot")
         kei = shot_character(shot_dir, shot, config.character)
         report["joints"] = str(read_back(client, shot_dir, pass_name, kei, report["mode"]))
+        mem = unreal_memory.record(shot_dir, editor.url, f"{pass_name}: keyed and read back")
+        if mem:
+            report["memory"] = {"private_gb": mem["private_gb"], "working_set_gb": mem["working_set_gb"]}
     except NeedsHuman as e:
         stop_for_human(shot_dir, str(e))
         raise

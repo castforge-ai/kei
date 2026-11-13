@@ -495,8 +495,10 @@ message names it; nothing is saved.
   motion to the asset; each `ik_` bone is set to follow its bone. Kei then checks every `ik_` bone against its bone on
   every frame and names any bone and frame that lags.
 
-If the editor stops answering, the shot pauses (`paused_machine`); open the editor again and run `kei run` to resume
+If the editor stops answering, Kei first asks again every 15 seconds for up to 5 minutes, because a busy editor (compiling shaders, loading assets) often answers late (`KEI_UNREAL_WAIT_S` sets the seconds; 0 pauses at once). If it still does not answer, the shot pauses (`paused_machine`); open the editor again and run `kei run` to resume
 at the same pass.
+
+Kei sends the keys of a pass to the editor in batches of 15 frames, one undo step for each batch, so a long shot does not flood your project with audit files or keep every frame in the undo history. After each pass and each bake it also writes the editor's memory (Windows, from the process that listens on the Claireon port) to `unreal/memory.json`: if the numbers climb by the same amount at every pass, the editor is keeping the sequences; if they jump at a bake, it is keeping the baked animations.
 
 ### Maya
 

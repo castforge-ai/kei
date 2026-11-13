@@ -1,11 +1,21 @@
 # kei_script: set_keys
-# Keys the Control Rig controls of Kei's own sequence at one frame, in one undo transaction. Kei calls it once per key
-# frame, after the sequence has been open for an editor tick.
-# Input: sequence, frame, tangent (step, linear, spline, flat), controls {control: {channel: value}}, types
-# {control: euler_transform | float | bool | rotator}. Values are in the rig's own units (cm, degrees).
+# Keys the Control Rig controls of Kei's own sequence. Kei sends a batch of key frames in one call (one audit file in
+# the project, not one per frame) and the whole batch is one undo transaction: the editor keeps what an undo step
+# touches in memory, so fewer steps keep less. The sequence has been open for an editor tick before the call.
+# Input: sequence and keys [{frame, tangent (step, linear, spline, flat), controls {control: {channel: value}}, types
+# {control: euler_transform | float | bool | rotator}}]. One frame may also be given flat: sequence, frame, tangent,
+# controls, types. Values are in the rig's own units (cm, degrees).
 # A transform key writes all nine channels of the control, so the channels Kei does not name keep their value there.
 # Output: keyed (channel count), clipped (asked versus reached, when a limit held a value back), tangents.
-def _main(inp):
+class _NoTransaction:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _one(inp, own_transaction=True):
     seq = load_sequence(inp["sequence"])
     if not inp["sequence"].startswith(KEI_ROOT + "/"):
         raise RuntimeError("Kei keys only its own sequences under " + KEI_ROOT)
@@ -14,7 +24,7 @@ def _main(inp):
     frame = unreal.FrameNumber(int(inp["frame"]))
     unit = unreal.MovieSceneTimeUnit.DISPLAY_RATE
     keyed, clipped = 0, []
-    with unreal.ScopedEditorTransaction("Kei keys"):
+    with (unreal.ScopedEditorTransaction("Kei keys") if own_transaction else _NoTransaction()):
         for ctrl, chans in inp["controls"].items():
             kind = inp["types"][ctrl]
             if kind == "euler_transform":
@@ -71,6 +81,21 @@ def _main(inp):
                                 key.set_tangent_mode(unreal.RichCurveTangentMode.RCTM_USER)
     except Exception as e:
         tangents = "skipped: " + str(e)[:160]
+    return {"keyed": keyed, "clipped": clipped, "tangents": tangents}
+
+
+def _main(inp):
+    if "keys" not in inp:
+        return _one(inp)
+    keyed, clipped, tangents = 0, [], "set"
+    with unreal.ScopedEditorTransaction("Kei keys"):         # one undo step for the whole batch
+        for k in inp["keys"]:
+            got = _one({"sequence": inp["sequence"], "frame": k["frame"], "tangent": k["tangent"],
+                        "controls": k["controls"], "types": k["types"]}, own_transaction=False)
+            keyed += got["keyed"]
+            clipped += [dict(c, f=k["frame"]) for c in got["clipped"]]
+            if str(got["tangents"]) != "set":
+                tangents = got["tangents"]
     return {"keyed": keyed, "clipped": clipped, "tangents": tangents}
 
 

@@ -29,8 +29,11 @@ A shot is a folder. Run each command from the folder that holds the shots, where
 
 - New shot: `kei run <shot> --request "<what to animate>"`. Use the author's request as they wrote it.
 - Where it stands: `kei status <shot>`. Then, by status:
-  - `needs_answer`: show the question it prints. Send the author's reply with `kei answer <shot> --text "<reply>"`,
-    then `kei run <shot>`.
+  - `needs_answer`: show the question it prints, all of it, as Kei wrote it. When the author answers in this chat, you
+    MUST send their words to Kei with `kei answer <shot> --text "<reply>"`, then `kei run <shot>`. An answer given
+    only in the chat never reaches Kei: its live page keeps showing the question until `kei answer` runs. Do not
+    answer for the author, and do not edit the shot's files to apply an answer yourself. If the reply covers only
+    some of the questions, send it as it is and let Kei ask again.
   - `needs_human`: show the notes it prints. After the fix, `kei retry <shot>`.
   - `paused_usage` or `paused_machine`: say why it paused. Later, `kei run <shot>` goes on where it stopped.
   - `needs_approval`: the shot waits for the author's sign-off. See "The review happens here".
