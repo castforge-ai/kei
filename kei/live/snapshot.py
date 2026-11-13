@@ -208,6 +208,16 @@ def _images(shot: Path) -> list[dict]:
     return sorted(out, key=lambda x: -x["mtime"])
 
 
+def _frames(v):
+    """The plan's length as one number: a seat may write it as a range [first, last]; the page wants the last frame."""
+    if isinstance(v, (list, tuple)):
+        v = v[-1] if v else None
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _travel(root) -> list:
     """The root's forward travel as [frame, metres] pairs, from plan.json's root keys; [] when it stays in place."""
     if not isinstance(root, dict):
@@ -239,7 +249,7 @@ def snapshot(shot: Path) -> dict:
         "pending": pending,
         "character": _json(where(shot, "unreal/character.json")),
         "plan": None if not isinstance(plan, dict) else {
-            "fps": plan.get("fps"), "frames": plan.get("frames"), "loop": bool(plan.get("loop")),
+            "fps": plan.get("fps"), "frames": _frames(plan.get("frames")), "loop": bool(plan.get("loop")),
             "travel": _travel(plan.get("root")),
             "keys": [_key(k) for k in plan.get("keys") or [] if isinstance(k, dict)]},
         "plan_versions": _versions(shot),

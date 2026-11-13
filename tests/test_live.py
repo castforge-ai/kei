@@ -182,3 +182,10 @@ def test_the_snapshot_says_whether_kei_planned_a_loop_and_how_far_the_root_trave
     (shot / "plan" / "plan.json").write_text(json.dumps(data), encoding="utf-8")
     p = snapshot(shot)["plan"]
     assert p["loop"] is False and p["travel"] == []            # in place, plays once
+
+
+def test_a_plan_length_written_as_a_range_reaches_the_page_as_one_number(shot):
+    data = json.loads((shot / "plan" / "plan.json").read_text(encoding="utf-8"))
+    data["frames"] = [0, 150]
+    (shot / "plan" / "plan.json").write_text(json.dumps(data), encoding="utf-8")
+    assert snapshot(shot)["plan"]["frames"] == 150
