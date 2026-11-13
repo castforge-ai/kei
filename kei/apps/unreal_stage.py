@@ -23,7 +23,7 @@ from kei.apps.unreal import Claireon, NeedsHuman, UnrealError
 from kei.apps import unreal_memory
 from kei.apps.unreal_keys import apply_keys
 from kei.apps.unreal_readback import read_back
-from kei.apps.unreal_rig import load_rig, read_rig
+from kei.apps.unreal_rig import load_rig, read_rig, release_memory
 from kei.apps.unreal_session import (Question, candidate_urls, choose_target, find_editors, load_target, locate,
                                      pick_character, probe_editor, save_target)
 from kei.characters import shot_character
@@ -51,10 +51,11 @@ def locate_waiting(target: dict, probe: Callable[[str], dict | None], sleep=time
     wait, waited = patience(), 0.0
     while True:
         editor = locate(target, probe)
-        if editor is not None or waited >= wait:
+        if (editor is not None and editor.level) or waited >= wait:
             return editor
         if waited == 0:
-            _say_waiting(f"the Unreal Editor does not answer at {target.get('url')}", wait)
+            _say_waiting(f"the Unreal Editor does not answer at {target.get('url')}" if editor is None
+                         else "the Unreal Editor has no level loaded yet", wait)
         sleep(STEP_S)
         waited += STEP_S
 
@@ -159,6 +160,21 @@ def prepare(shot_dir: Path, config, probe: Callable[[str], dict | None] = probe_
     return None
 
 
+def capture_test(shot_dir: Path, pass_name: str, frame: int | None = None,
+                 probe: Callable[[str], dict | None] = probe_editor) -> dict:
+    """kei unreal capture-test: one frame of a keyed pass drawn by the editor from three views (kei.apps.unreal_capture)."""
+    from kei.apps.unreal_capture import capture_test as shoot
+    shot_dir = Path(shot_dir)
+    target = load_target(shot_dir)
+    if not target or target.get("kind") != "open":
+        raise ShotError(f"{shot_dir} was not animated in Unreal: there is no character in an editor to draw")
+    editor = locate_waiting(target, probe)
+    if editor is None:
+        raise UnrealError(f"the Unreal Editor for project {target.get('project') or 'unnamed'} does not answer: open "
+                          "it with Claireon's server on, then run the test again")
+    return shoot(connect_waiting(editor.url), shot_dir, pass_name, frame)
+
+
 def bake(shot_dir: Path, pass_name: str, probe: Callable[[str], dict | None] = probe_editor) -> dict:
     """kei export --to unreal: the bake of an approved shot, in the editor the shot was animated in."""
     from kei.apps.unreal_bake import bake_shot
@@ -209,8 +225,12 @@ def key_pass(shot_dir: Path, pass_name: str, config, probe: Callable[[str], dict
         kei = shot_character(shot_dir, shot, config.character)
         report["joints"] = str(read_back(client, shot_dir, pass_name, kei, report["mode"]))
         mem = unreal_memory.record(shot_dir, editor.url, f"{pass_name}: keyed and read back")
+        freed = release_memory(client, shot_dir)
+        after = unreal_memory.record(shot_dir, editor.url, f"{pass_name}: after releasing memory")
         if mem:
-            report["memory"] = {"private_gb": mem["private_gb"], "working_set_gb": mem["working_set_gb"]}
+            report["memory"] = {"private_gb": mem["private_gb"], "working_set_gb": mem["working_set_gb"],
+                                **({"after_release_gb": after["private_gb"]} if after else {}),
+                                **({"release": freed} if freed else {})}
     except NeedsHuman as e:
         stop_for_human(shot_dir, str(e))
         raise

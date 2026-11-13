@@ -62,3 +62,10 @@ def test_a_dotted_app_setting_is_written_into_its_existing_table(tmp_path, monke
     assert data["apps"]["unreal"] == {"session": "open", "project": "C:/Projects/MyGame",
                                       "url": "http://127.0.0.1:50000/mcp", "mesh": "/Game/SKM_Manny",
                                       "control_rig": "/Game/CR_Body"}
+
+
+def test_version_flag_prints_the_package_version(capsys):
+    import pytest
+    with pytest.raises(SystemExit) as e:
+        main(["--version"])
+    assert e.value.code == 0 and capsys.readouterr().out.startswith("kei-animator ")

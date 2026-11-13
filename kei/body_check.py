@@ -370,6 +370,12 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
     joint_ranges = {f"{part}_{s}": {"min_deg": round(min(v), 1), "max_deg": round(max(v), 1)}
                     for part, table in (("knee", knee_bend), ("elbow", elbow_bend)) for s, v in table.items()}
 
+    # basic posing: the signs of a bad pose a line drawing hides (kei.posing_check)
+    from kei.posing_check import posing_flags
+    pose_flags, pose_thresholds = posing_flags(frames, knee_bend, elbow_bend, k, contact_h)
+    flags += pose_flags
+    thresholds.update(pose_thresholds)
+
     # arcs: on the distinct positions of each part, so stepped holds are not read as stops mid-path. A stepped pass
     # jumps from key to key: its kinks are listed for the reader but not flagged; judge arcs on the spline pass.
     moving = ARC_MOVING * k

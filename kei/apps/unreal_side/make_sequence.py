@@ -11,6 +11,8 @@ def _floor_under(world, x, y, top, ignore):
     hit = unreal.SystemLibrary.line_trace_single(world, unreal.Vector(x, y, top), unreal.Vector(x, y, top - 100000.0),
                                                  unreal.TraceTypeQuery.TRACE_TYPE_QUERY1, False, ignore,
                                                  unreal.DrawDebugTrace.NONE, True)
+    if hit is None:       # the trace returns nothing while the level is still loading: no floor found
+        return None
     t = hit.to_tuple()
     return float(t[4].z) if t[0] else None
 

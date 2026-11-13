@@ -24,7 +24,7 @@ twelve stages a trained animator would, and every stage leaves a file you can op
 | Plan | the key poses with their frames, drawn as a plan sheet (side view, plus front and top views when planned), and the planned arcs |
 | Blocking | the key poses, stepped, in four views and a playback |
 | Breakdowns, spline and polish | each refined pass in its own folder |
-| Checks | contacts, foot slide, balance, joint ranges, arcs, measured by `kei check` |
+| Checks | contacts, foot slide, balance, joint ranges, arcs and basic posing (an A-frame stance, locked knees, a kinked neck, a dead straight arm, a body that does not move), measured by `kei check` |
 | Self-review | what was seen, frame by frame, before anyone else looks |
 | Delivery | the shot, and the lessons it taught |
 
@@ -499,6 +499,10 @@ If the editor stops answering, Kei first asks again every 15 seconds for up to 5
 at the same pass.
 
 Kei sends the keys of a pass to the editor in batches of 15 frames, one undo step for each batch, so a long shot does not flood your project with audit files or keep every frame in the undo history. After each pass and each bake it also writes the editor's memory (Windows, from the process that listens on the Claireon port) to `unreal/memory.json`: if the numbers climb by the same amount at every pass, the editor is keeping the sequences; if they jump at a bake, it is keeping the baked animations.
+
+After each pass Kei also asks the editor to give its memory back: it closes the sequence, unloads the shot's saved Kei sequences (an unsaved one stays), clears the undo history and collects garbage, and `unreal/memory.json` gets a row "after releasing memory" so you can see what it freed (`KEI_UNREAL_CLEANUP=0` turns it off).
+
+`kei unreal capture-test <shot> <pass>` is a test, not yet part of the review: it has the editor draw one frame of a keyed pass from the front, the side and the three quarter view (the real mesh, with a temporary camera and light that are deleted afterwards) into `out_<pass>/mesh_test/`, and says in words whether the pictures look drawn. Open them and check that they show your character.
 
 ### Maya
 

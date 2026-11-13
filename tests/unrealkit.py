@@ -40,6 +40,10 @@ class FakeEditor:
         self.saved: list[str] = []
         self.keys: list[dict] = []
         self.batches: list[int] = []       # key frames in each set_keys call
+        self.unloads: list[list] = []      # the paths each unload_kei call was asked to unload
+        self.unload_error = None
+        self.captures: list[dict] = []     # capture_frame calls
+        self.capture_shown = 0.31          # the fraction of each picture that is the character
         self.opened = None
         self.leave_changed = None
         self.user_dirty = None
@@ -56,7 +60,8 @@ class FakeEditor:
         return {"probe": self.probe, "make_sequence": self.make_sequence, "read_rig": self.read_rig,
                 "dirty": self.get_dirty, "set_keys": self.set_keys, "save_asset": self.save_asset,
                 "open_sequence": self.open_sequence, "eval_rig": self.eval_rig, "bake": self.bake,
-                "read_bake": self.read_bake, "organize": self.organize}
+                "read_bake": self.read_bake, "organize": self.organize,
+                "unload_kei": self.unload_kei, "capture_frame": self.capture_frame}
 
     def server(self) -> FakeClaireon:
         self.fake = FakeClaireon(self.handlers())
@@ -124,6 +129,21 @@ class FakeEditor:
                                     "reached": reached, "f": k["frame"]})
             keyed += sum(len(v) for v in k["controls"].values())
         return {"keyed": keyed, "clipped": clipped}
+
+    def capture_frame(self, inp):
+        self.captures.append(inp)
+        if inp["stage"] == "pose":
+            return {"stage": "pose", "frame": inp["frame"]}
+        shown = self.capture_shown
+        return {"stage": "shoot", "files": [inp["out_dir"] + "/" + v["name"] + ".png" for v in inp["views"]],
+                "nonblack": {v["name"]: shown for v in inp["views"]}, "errors": [], "found": "the sequence's bound object"}
+
+    def unload_kei(self, inp):
+        self.unloads.append(list(inp["paths"]))
+        if self.unload_error:
+            return {"error": self.unload_error}
+        return {"closed": True, "unloaded": len(inp["paths"]), "kept_dirty": [], "undo_cleared": True, "gc": True,
+                "errors": []}
 
     def save_asset(self, inp):
         p = inp["path"]

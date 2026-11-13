@@ -56,6 +56,20 @@ def sequences(shot_dir: Path) -> dict:
     return _read(sequences_path(shot_dir), {})
 
 
+def release_memory(client: Claireon, shot_dir: Path) -> dict | None:
+    """After a pass: the editor unloads the shot's saved Kei sequences, drops its undo history and collects garbage
+    (kei_script unload_kei), because the editor keeps what a pass touched (about 2 GB a pass in a measured shot) until
+    told otherwise. KEI_UNREAL_CLEANUP=0 turns it off. Never stops a shot: a refusal is returned as {\"error\": ...}."""
+    import os
+    if os.environ.get("KEI_UNREAL_CLEANUP", "1") == "0":
+        return None
+    paths = [p for made in sequences(shot_dir).values() for p in made]
+    try:
+        return run_script(client, "unload_kei.py", {"paths": paths})
+    except UnrealError as e:
+        return {"error": str(e)[:200]}
+
+
 def character_path(shot_dir: Path) -> Path:
     return Path(shot_dir) / "unreal" / "character.json"
 

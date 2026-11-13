@@ -796,6 +796,22 @@ def _cmd_unreal_tidy(a) -> int:
     return EXIT_DONE
 
 
+def _cmd_unreal_capture_test(a) -> int:
+    from kei.apps import unreal_stage
+    r = unreal_stage.capture_test(Path(a.shot), a.pass_name, a.frame)
+    print(f"frame {r['frame']} of {r['sequence']}; the character was found as {r['found']}")
+    for name, shown in sorted(r["nonblack"].items()):
+        print(f"  {name}: {shown:.0%} of the picture is the character")
+    for f in r["files"]:
+        print(f"  {f}")
+    for e in r["errors"]:
+        print(f"  not drawn: {e}")
+    print("It looks drawn: open the pictures and check that they show your character."
+          if r["looks_drawn"] else
+          "It does NOT look drawn (empty or black): send these lines and the pictures to the Kei author.")
+    return EXIT_DONE if r["looks_drawn"] else EXIT_ERROR
+
+
 def _cmd_unreal_key(a) -> int:
     from kei.apps import unreal_stage
     r = unreal_stage.key_pass(Path(a.shot), a.pass_name, load_config(_config_path(a.config)))
@@ -1069,9 +1085,18 @@ def _safe_output() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
 
+def _version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("kei-animator")
+    except Exception:       # not installed as a package (a source checkout)
+        return "unknown"
+
+
 def main(argv: list[str] | None = None) -> int:
     _safe_output()
     ap = argparse.ArgumentParser(prog="kei", description="Kei Animator, by Castforge: run a shot through every stage.")
+    ap.add_argument("--version", action="version", version="kei-animator " + _version())
     sub = ap.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run", help="run the shot until it is done or needs a person")
     r.add_argument("shot")
@@ -1302,6 +1327,12 @@ def main(argv: list[str] | None = None) -> int:
     uk.add_argument("pass_name", metavar="pass", help="blocking, p1, p2, ...")
     uk.add_argument("--config", help="kei.toml (default: ./kei.toml, else kei.example.toml)")
     uk.set_defaults(fn=_cmd_unreal_key)
+    uc = usub.add_parser("capture-test", help="a test: have the editor draw one frame of a keyed pass from the front, "
+                                             "the side and the three quarter view (the real mesh), into out_<pass>/mesh_test/")
+    uc.add_argument("shot")
+    uc.add_argument("pass_name", metavar="pass", help="blocking, p1, p2, ...")
+    uc.add_argument("--frame", type=int, help="the frame to draw (default: the middle key frame)")
+    uc.set_defaults(fn=_cmd_unreal_capture_test)
     a = ap.parse_args(argv)
     try:
         return _in_working_layout(a)
