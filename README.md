@@ -1,6 +1,3 @@
-<!-- PRE-RELEASE DRAFT for the author's review. Built: the Kei and Keira characters, the glTF export and the Kei
-skill (First ten minutes), and the full rule book, now inside this repository in kei/book (24 topics, 847 rules) as
-Kei's default book. Built and tested live on one editor, pending a full walk with the agent seats: the Unreal adapter. Not built yet: the other characters. -->
 
 # Kei Animator, by Castforge
 
@@ -364,8 +361,10 @@ my-shots/
 
 ## First ten minutes
 
-1. Install the `kei` command: `pip install kei-animator` (Python 3.12 or newer). To work on Kei itself, clone this
-   repository and run `pip install -e .` in it.
+1. Install the `kei` command (Python 3.12 or newer), with `pipx install kei-animator` or `uv tool install kei-animator`.
+   Both put `kei` on your PATH. A plain `pip install kei-animator` works too, but `pip install --user` can leave the
+   command off your PATH: then run Kei as `python -m kei` (for example `python -m kei init`) or add pip's user scripts
+   folder to your PATH. To work on Kei itself, clone this repository and run `pip install -e .` in it.
 2. Install the Kei skill for your agent. The skill is the folder `skill/kei` in this repository; copy it (or link it)
    into your agent's skills folder:
    - Claude Code: `~/.claude/skills/kei` for every project, or `.claude/skills/kei` inside one project folder.

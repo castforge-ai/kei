@@ -244,7 +244,7 @@ def _locate(data: dict, key: str) -> tuple[str, str, int | None]:
             raise SettingError(f"{key}: there is no critic named {m.group(1)!r}; the critics are "
                                f"{', '.join(names) or 'none'}")
         return "critics", m.group(2), names.index(m.group(1))
-    table, leaf = key.split(".", 1)
+    table, leaf = key.rsplit(".", 1)      # apps.unreal.url is the key url in the table [apps.unreal]
     return table, leaf, None
 
 

@@ -38,3 +38,27 @@ def test_the_wheel_ships_the_example_inside_kei():
     cfg = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     inc = cfg["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
     assert inc == {"kei.example.toml": "kei/kei.example.toml"}
+
+
+def test_python_dash_m_kei_runs_the_same_command(tmp_path):
+    import subprocess
+    import sys
+    out = subprocess.run([sys.executable, "-m", "kei", "characters"], cwd=tmp_path, capture_output=True, text=True)
+    assert out.returncode == 0 and "built in:" in out.stdout
+
+
+def test_a_dotted_app_setting_is_written_into_its_existing_table(tmp_path, monkeypatch):
+    """Every apps.maya.* and apps.unreal.* setting, on the file kei init writes (the tables are already there)."""
+    import tomllib
+    monkeypatch.chdir(tmp_path)
+    assert main(["init"]) == 0
+    for key, value in (("apps.unreal.url", "http://127.0.0.1:50000/mcp"), ("apps.unreal.session", "open"),
+                       ("apps.unreal.project", "C:/Projects/MyGame"), ("apps.unreal.mesh", "/Game/SKM_Manny"),
+                       ("apps.unreal.control_rig", "/Game/CR_Body"), ("apps.maya.session", "open"),
+                       ("apps.app", "unreal")):
+        assert main(["settings", "set", key, value]) == 0, key
+    data = tomllib.loads((tmp_path / "kei.toml").read_text(encoding="utf-8"))
+    assert data["apps"]["app"] == "unreal" and data["apps"]["maya"]["session"] == "open"
+    assert data["apps"]["unreal"] == {"session": "open", "project": "C:/Projects/MyGame",
+                                      "url": "http://127.0.0.1:50000/mcp", "mesh": "/Game/SKM_Manny",
+                                      "control_rig": "/Game/CR_Body"}

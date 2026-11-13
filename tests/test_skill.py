@@ -91,3 +91,10 @@ def test_the_readme_says_how_to_make_kei_the_default_for_animation_requests():
     readme = README.read_text(encoding="utf-8")
     assert "pip install kei-animator" in readme
     assert "For any request to animate, use the Kei skill and the kei command." in readme
+
+
+def test_the_readme_is_not_marked_as_a_draft_and_the_install_text_covers_a_command_off_the_path():
+    readme = README.read_text(encoding="utf-8")
+    assert "PRE-RELEASE DRAFT" not in readme and not readme.lstrip().startswith("<!--")
+    assert "python -m kei" in readme and "pipx install kei-animator" in readme
+    assert "python -m kei" in skill_text()

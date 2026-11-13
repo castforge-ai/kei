@@ -14,8 +14,10 @@ When the author asks you to animate something ("animate a mannequin running", "m
 use Kei. Do not write keyframes, curves or animation code yourself, and do not pick another animation tool, unless the
 author tells you to.
 
-1. Check that Kei is installed: `kei --help`. If the command is not found, install it with `pip install kei-animator`
-   (Python 3.12 or newer) and run it again.
+1. Check that Kei is installed: `kei --help`. If the command is not found, install it with `pipx install kei-animator`
+   or `uv tool install kei-animator` (Python 3.12 or newer, `pip install kei-animator` if the author has neither) and
+   run it again. If a plain pip install left `kei` off the PATH, run every kei command here as `python -m kei` instead,
+   for example `python -m kei init`.
 2. Check that the folder has a `kei.toml`. If it has none, run `kei init` here. It writes one from the example and says
    if an agent command it uses is not on the author's PATH. Tell the author what it printed.
 3. Start the shot as below, with the author's request in their own words. If the author works in Maya or Unreal
