@@ -127,3 +127,27 @@ def test_a_clipped_value_is_reported_with_its_frame_from_inside_a_batch(tmp_path
         ed.clip = ("foot_l_ik_ctrl", "location.z", 5.0)
         report = apply_keys(ed.client(), shot, "clip")
     assert [c["f"] for c in report["clipped"]] == [0, 12] and report["clipped"][1]["reached"] == 5.0
+
+
+def test_full_body_poses_are_split_so_no_call_passes_claireons_script_limit(tmp_path):
+    """A pose from kei unreal pose keys every channel: 15 such frames in one call broke Claireon's 64 KiB limit."""
+    from kei.apps.unreal_keys import INPUT_BUDGET, batches
+    controls = {f"c{i}_ctrl": {f"rotation.{a}": 12.3456 for a in "xyz"} for i in range(400)}
+    keys = [{"f": f, "tangent": "spline", "controls": controls} for f in range(15)]
+    types = {c: "euler_transform" for c in controls}
+    out = batches(keys, types)
+    assert all(len(json.dumps(b)) <= INPUT_BUDGET + 2000 for b in out)
+    keyed = {}
+    for b in out:
+        for item in b:
+            keyed.setdefault(item["frame"], {}).update(item["controls"])
+    assert keyed == {f: controls for f in range(15)}          # nothing lost, nothing doubled
+
+
+def test_one_frame_larger_than_a_call_is_split_by_control_at_the_same_frame():
+    from kei.apps.unreal_keys import batches
+    controls = {f"c{i}_ctrl": {"location.x": 1.0} for i in range(50)}
+    out = batches([{"f": 7, "tangent": "step", "controls": controls}], {c: "euler_transform" for c in controls},
+                  budget=300)
+    assert len(out) > 1 and all(i["frame"] == 7 and i["tangent"] == "step" for b in out for i in b)
+    assert sum(len(i["controls"]) for b in out for i in b) == 50

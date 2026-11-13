@@ -65,6 +65,38 @@ def parse_keys(shot: dict, rig: dict, mode: str) -> list[dict]:
 
 
 BATCH = 15      # key frames in one editor call: few calls, and each one short enough to answer in time
+INPUT_BUDGET = 40_000   # bytes of key input in one call: Claireon refuses a script over 64 KiB, and the script and
+                        # Kei's helpers ride in the same call. A full-body pose keys every channel (about 1000)
+
+
+def batches(keys: list[dict], types: dict, budget: int = INPUT_BUDGET, most: int = BATCH) -> list[list[dict]]:
+    """The set_keys inputs in calls of at most `most` key frames and about `budget` bytes. A key frame too large for
+    one call is split by control into several calls at the same frame: keys on one control never split."""
+    items = []
+    for k in keys:
+        part: dict = {}
+        size = 0
+        for ctl, chans in k["controls"].items():
+            cost = len(json.dumps({ctl: chans})) + len(json.dumps({ctl: types[ctl]}))   # its values and its type
+            if part and size + cost > budget:
+                items.append((k, part))
+                part, size = {}, 0
+            part[ctl] = chans
+            size += cost
+        items.append((k, part))
+    out, cur, size = [], [], 0
+    for k, controls in items:
+        item = {"frame": k["f"], "tangent": k["tangent"], "controls": controls,
+                "types": {c: types[c] for c in controls}}
+        n = len(json.dumps(item))
+        if cur and (len(cur) >= most or size + n > budget):
+            out.append(cur)
+            cur, size = [], 0
+        cur.append(item)
+        size += n
+    if cur:
+        out.append(cur)
+    return out
 
 
 def apply_keys(client: Claireon, shot_dir: Path, pass_name: str, mode: str | None = None) -> dict:
@@ -88,10 +120,8 @@ def apply_keys(client: Claireon, shot_dir: Path, pass_name: str, mode: str | Non
     tick()                                  # the editor spawns the character one tick after the sequence opens
     before = run_script(client, "dirty.py", {})["dirty"]
     clipped, tangents = [], "set"
-    for i in range(0, len(keys), BATCH):        # a batch of key frames in one call: one audit file, not one per frame
-        got = run_script(client, "set_keys.py", {"sequence": seq, "keys": [
-            {"frame": k["f"], "tangent": k["tangent"], "controls": k["controls"],
-             "types": {c: types[c] for c in k["controls"]}} for k in keys[i:i + BATCH]]})
+    for batch in batches(keys, types):          # a batch of key frames in one call: one audit file, not one per frame
+        got = run_script(client, "set_keys.py", {"sequence": seq, "keys": batch})
         clipped += got.get("clipped", [])
         if str(got.get("tangents", "set")) != "set":
             tangents = got["tangents"]
