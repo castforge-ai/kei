@@ -19,7 +19,7 @@ FOLDERS = {"1_setup": "1_Setup", "2_planning": "2_Planning", "3_blocking": "3_Bl
 
 
 def _phase(pass_name: str, phases: dict[int, str]) -> str:
-    if pass_name in ("rig", "probe"):
+    if pass_name in ("rig", "probe", "pose"):
         return "1_setup"
     if pass_name == "blocking":
         return "3_blocking"

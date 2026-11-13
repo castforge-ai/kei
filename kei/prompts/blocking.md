@@ -67,3 +67,10 @@ The fingers and toes come back too: out_<pass>/hands_toes.json gives each finger
 toward the palm, negative bends it backward) and each toe's lift against the foot, per frame, with flags for a finger
 bent backward and for toes bent down (a flick in the air, or digging into the floor). Read it before you ask the
 author about the hands or toes: ask only what the numbers cannot show.
+A pose that already exists in the project (the character's idle the shot starts from, the last frame of the clip
+before it) is never searched for by keying probes: run `kei unreal pose <shot> --anim <asset path> --frame <n>`.
+The Control Rig solves that frame itself, fingers and toes included, and Kei writes
+rig/pose_<anim>_f<n>.json: "keys" holds every channel's value in the units shot.json keys in, so the key is
+{"f": <frame>, "tangent": ..., **keys}, unchanged. Key every channel of it, not a subset, and do not adjust it
+toward a number you measured elsewhere. Its "check" says how closely the rig reached the animation; when
+"matches" is false, tell the author before you build on the pose.

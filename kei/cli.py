@@ -822,6 +822,19 @@ def _cmd_unreal_key(a) -> int:
     return EXIT_DONE
 
 
+def _cmd_unreal_pose(a) -> int:
+    from kei.apps import unreal_stage
+    r = unreal_stage.pose_shot(Path(a.shot), a.anim, a.frame)
+    c = r["check"]
+    print(f"the pose of {r['anim']} frame {r['frame']} on the rig: {len(r['keys'])} channels, written to {r['path']}")
+    print(f"check: mean {c.get('mean_deg')} deg over {c.get('bones')} bones; head, hands, fingertips and feet "
+          f"against the animation (cm, from the pelvis): {c.get('pelvis_relative_cm')}")
+    if not r["matches"]:
+        print("the rig does not reach this pose closely (more than 1 deg on average, or more than 2 cm at a hand, "
+              "the head or a foot): say so to the author before building on it")
+    return EXIT_DONE
+
+
 def _export_unreal(a) -> int:
     from kei.apps import unreal_stage
     from kei.apps.unreal_bake import bake_lines
@@ -1333,6 +1346,12 @@ def main(argv: list[str] | None = None) -> int:
     uc.add_argument("pass_name", metavar="pass", help="blocking, p1, p2, ...")
     uc.add_argument("--frame", type=int, help="the frame to draw (default: the middle key frame)")
     uc.set_defaults(fn=_cmd_unreal_capture_test)
+    up = usub.add_parser("pose", help="put a frame of an animation already in the project onto the character's "
+                                      "Control Rig and write its control values as keys (rig/pose_<anim>_f<n>.json)")
+    up.add_argument("shot")
+    up.add_argument("--anim", required=True, help="the animation's asset path, such as /Game/Char/Anim/as_idle")
+    up.add_argument("--frame", type=int, default=0, help="the animation's frame (default 0)")
+    up.set_defaults(fn=_cmd_unreal_pose)
     a = ap.parse_args(argv)
     try:
         return _in_working_layout(a)

@@ -55,13 +55,17 @@ class FakeEditor:
         self.bake_error = None
         self.bakes: list[dict] = []
         self.content_dir = ""             # the project's Content folder on disk (organize.py reports it)
+        self.pose_check = {"bones": 113, "mean_deg": 0.24, "worst_deg": [["spine_03", 7.33]],
+                           "pelvis_relative_cm": {"head": 0.0, "hand_l": 0.0, "foot_l": 1.8}}
+        self.poses: list[dict] = []
 
     def handlers(self) -> dict:
         return {"probe": self.probe, "make_sequence": self.make_sequence, "read_rig": self.read_rig,
                 "dirty": self.get_dirty, "set_keys": self.set_keys, "save_asset": self.save_asset,
                 "open_sequence": self.open_sequence, "eval_rig": self.eval_rig, "bake": self.bake,
                 "read_bake": self.read_bake, "organize": self.organize,
-                "unload_kei": self.unload_kei, "capture_frame": self.capture_frame}
+                "unload_kei": self.unload_kei, "capture_frame": self.capture_frame,
+                "load_pose": self.load_pose}
 
     def server(self) -> FakeClaireon:
         self.fake = FakeClaireon(self.handlers())
@@ -97,6 +101,7 @@ class FakeEditor:
             return {"error": "the asset " + path + " already exists: Kei never overwrites or deletes an asset"}
         self.sequences[path] = {"frames": inp["frames"], "fps": inp["fps"], "copy_from": inp.get("copy_from"),
                                 "keys": []}
+        self.made_open = path              # make_sequence.py opens the sequence it made
         return {"path": path, "fps": int(inp["fps"]), "frames": inp["frames"], "facing": "yaw -90", "dirty": []}
 
     def read_rig(self, inp):
@@ -176,6 +181,23 @@ class FakeEditor:
         self.saved.append(inp["asset"])
         return {"asset": inp["asset"], "frames": inp["end"] + 1, "ik_copy": "skeleton pose",
                 "bones": 161, "skipped_bones": 185, "dirty": sorted(self.dirty)}
+
+    def load_pose(self, inp):
+        """The rig's backwards solve of one animation frame, read back. Like the editor, only on the open sequence."""
+        if inp["sequence"] not in (self.opened, getattr(self, "made_open", None)):
+            return {"error": "the sequence " + inp["sequence"] + " is not the one open in Sequencer"}
+        if not inp["anim"].startswith("/Game/"):
+            return {"error": "the animation " + inp["anim"] + " is not an animation sequence in the project"}
+        self.poses.append(inp)
+        self.dirty.add(inp["sequence"])
+        if self.user_dirty:
+            self.dirty.add(self.user_dirty)
+        euler = {"location.x": 1.0, "location.y": 2.0, "location.z": 3.0, "rotation.x": 10.0, "rotation.y": 20.0,
+                 "rotation.z": 30.0, "scale.x": 1.0, "scale.y": 1.0, "scale.z": 1.0}
+        return {"sequence": inp["sequence"], "anim": inp["anim"], "frame": inp["frame"],
+                "controls": {"foot_l_ik_ctrl": dict(euler), "pelvis_ctrl": dict(euler), "hand_l_fk_ctrl": dict(euler),
+                             "spine_blend": {"value": 0.25}, "not_in_rig_ctrl": dict(euler)},
+                "types": {}, "check": self.pose_check, "dirty": sorted(self.dirty)}
 
     def read_bake(self, inp):
         frames = {str(f): {b: v for b, v in self.baked(f).items() if b in inp["bones"]}
