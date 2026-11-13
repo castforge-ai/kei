@@ -15,7 +15,34 @@ class _NoTransaction:
         return False
 
 
-def _one(inp, own_transaction=True):
+def _set_tangents(seq, frames, controls):
+    """Each key of these controls at these frames gets its frame's tangent. Each channel's keys are read once: every
+    key read makes a scripting object, and reading every channel once per key frame made millions of them a pass,
+    enough to exhaust the editor's object limit. Returns "set", or "skipped: <why>"."""
+    try:
+        mode = {"step": unreal.RichCurveInterpMode.RCIM_CONSTANT, "linear": unreal.RichCurveInterpMode.RCIM_LINEAR,
+                "spline": unreal.RichCurveInterpMode.RCIM_CUBIC, "flat": unreal.RichCurveInterpMode.RCIM_CUBIC}
+        binding = seq.get_bindings()[0]
+        for track in binding.get_tracks():
+            if track.get_class().get_name() != "MovieSceneControlRigParameterTrack":
+                continue
+            for section in track.get_sections():
+                for channel in section.get_all_channels():
+                    if str(channel.channel_name).split(".")[0] not in controls:
+                        continue
+                    for key in channel.get_keys():
+                        tangent = frames.get(key.get_time().frame_number.value)
+                        if tangent is None:
+                            continue
+                        key.set_interpolation_mode(mode[tangent])
+                        if tangent == "flat":
+                            key.set_tangent_mode(unreal.RichCurveTangentMode.RCTM_USER)
+    except Exception as e:
+        return "skipped: " + str(e)[:160]
+    return "set"
+
+
+def _one(inp, own_transaction=True, tangents_now=True):
     seq = load_sequence(inp["sequence"])
     if not inp["sequence"].startswith(KEI_ROOT + "/"):
         raise RuntimeError("Kei keys only its own sequences under " + KEI_ROOT)
@@ -61,41 +88,25 @@ def _one(inp, own_transaction=True):
                 lib.set_local_control_rig_rotator(seq, rig, ctrl, frame, unreal.Rotator(rot[0], rot[1], rot[2]), unit,
                                                   True)
             keyed += len(chans)
-    tangents = "set"
-    try:
-        mode = {"step": unreal.RichCurveInterpMode.RCIM_CONSTANT, "linear": unreal.RichCurveInterpMode.RCIM_LINEAR,
-                "spline": unreal.RichCurveInterpMode.RCIM_CUBIC, "flat": unreal.RichCurveInterpMode.RCIM_CUBIC}
-        binding = seq.get_bindings()[0]
-        for track in binding.get_tracks():
-            if track.get_class().get_name() != "MovieSceneControlRigParameterTrack":
-                continue
-            for section in track.get_sections():
-                for channel in section.get_all_channels():
-                    name = str(channel.channel_name)
-                    if name.split(".")[0] not in inp["controls"]:
-                        continue
-                    for key in channel.get_keys():
-                        if key.get_time().frame_number.value == int(inp["frame"]):
-                            key.set_interpolation_mode(mode[inp["tangent"]])
-                            if inp["tangent"] == "flat":
-                                key.set_tangent_mode(unreal.RichCurveTangentMode.RCTM_USER)
-    except Exception as e:
-        tangents = "skipped: " + str(e)[:160]
+    tangents = _set_tangents(seq, {int(inp["frame"]): inp["tangent"]}, set(inp["controls"])) if tangents_now else "set"
     return {"keyed": keyed, "clipped": clipped, "tangents": tangents}
 
 
 def _main(inp):
     if "keys" not in inp:
         return _one(inp)
-    keyed, clipped, tangents = 0, [], "set"
+    keyed, clipped = 0, []
+    seq = load_sequence(inp["sequence"])
     with unreal.ScopedEditorTransaction("Kei keys"):         # one undo step for the whole batch
         for k in inp["keys"]:
             got = _one({"sequence": inp["sequence"], "frame": k["frame"], "tangent": k["tangent"],
-                        "controls": k["controls"], "types": k["types"]}, own_transaction=False)
+                        "controls": k["controls"], "types": k["types"]}, own_transaction=False, tangents_now=False)
             keyed += got["keyed"]
             clipped += [dict(c, f=k["frame"]) for c in got["clipped"]]
-            if str(got["tangents"]) != "set":
-                tangents = got["tangents"]
+        # the tangents of the whole batch in one read of each channel's keys
+        tangents = _set_tangents(seq, {int(k["frame"]): k["tangent"] for k in inp["keys"]},
+                                 {c for k in inp["keys"] for c in k["controls"]})
+    unreal.SystemLibrary.collect_garbage()     # the key objects that read made are not kept until the next idle GC
     return {"keyed": keyed, "clipped": clipped, "tangents": tangents}
 
 

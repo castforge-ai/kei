@@ -16,6 +16,6 @@ UNREAL_SIDE_HASHES = {
     "read_bake.py": "fc65396934a5740661d777a8b803a9902ae79cf17fade3e2bf711252edaf0f69",
     "read_rig.py": "c68fd5836b3fa476e8f4c6a2088c6c8bbb1bd203c2f6290a5bef5780dc580325",
     "save_asset.py": "2402069ce9b23556e26f41ec63a18d899610b7dc62dc32efd72489edf3c56ebe",
-    "set_keys.py": "896c7f3a38f5358a30fd4527a8b5fe2ba009f9af8365cfa3ce7a1c87092ab4a4",
+    "set_keys.py": "15c877d8904440ea0335c775355450b330e2921f478c68043f9d1c14b5d9bda5",
     "unload_kei.py": "a7fa7d7ebda9660adf9fac20f8ebeb8be7ee9eda66a20d0292d411f10301cb56",
 }
