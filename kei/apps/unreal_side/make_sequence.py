@@ -38,7 +38,7 @@ def _place(binding):
             z, how = found, "the floor under the origin"
     binding.get_object_template().skeletal_mesh_component.set_editor_property(
         "relative_location", unreal.Vector(x, y, z))
-    return {"how": how, "at_cm": [round(x, 2), round(y, 2), round(z, 2)]}
+    return {"how": how, "at_cm": [round(x, 2), round(y, 2), round(z, 2)], "level": world.get_path_name().split(".")[0]}
 
 
 def _main(inp):

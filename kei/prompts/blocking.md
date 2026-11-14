@@ -74,3 +74,6 @@ rig/pose_<anim>_f<n>.json: "keys" holds every channel's value in the units shot.
 {"f": <frame>, "tangent": ..., **keys}, unchanged. Key every channel of it, not a subset, and do not adjust it
 toward a number you measured elsewhere. Its "check" says how closely the rig reached the animation; when
 "matches" is false, tell the author before you build on the pose.
+Kei stands the character on the floor at the open level's first Player Start, not at the origin: unreal/placed.json
+gives the level, the spot ("at_cm", world centimetres) and the sequence. Any camera or capture of the mesh you set up
+in the editor aims at that spot, and you read placed.json again after each new sequence, since the level can change.

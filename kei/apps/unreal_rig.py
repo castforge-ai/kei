@@ -51,6 +51,12 @@ def sequences_path(shot_dir: Path) -> Path:
     return Path(shot_dir) / "unreal" / "sequences.json"
 
 
+def placed_path(shot_dir: Path) -> Path:
+    """Where the newest sequence stands the character in the open level: {"level", "at_cm", "how", "sequence"}. The
+    spawnable actor stays at the origin; its mesh component carries this offset, so a camera aims here."""
+    return Path(shot_dir) / "unreal" / "placed.json"
+
+
 def sequences(shot_dir: Path) -> dict:
     """{pass_name: [asset path of each attempt, oldest first]}"""
     return _read(sequences_path(shot_dir), {})
@@ -100,6 +106,8 @@ def new_sequence(client: Claireon, shot_dir: Path, pass_name: str, character: di
             raise
         book.setdefault(pass_name, []).append(out["path"])
         _write(sequences_path(shot_dir), book)
+        if out.get("placed"):
+            _write(placed_path(shot_dir), {**out["placed"], "sequence": out["path"]})
         return out["path"]
     raise UnrealError(f"Kei could not find a free sequence name for {pass_name} under {kei_folder(shot_dir)}")
 

@@ -77,6 +77,9 @@ def test_a_new_sequence_per_attempt_takes_the_next_number_and_never_reuses_a_nam
         c2 = new_sequence(c, shot, "blocking", MANNY, 24, 24)
         assert c2.endswith("_blocking_3")
     assert sequences(shot) == {"blocking": [c2]}
+    placed = json.loads((shot / "unreal" / "placed.json").read_text(encoding="utf-8"))
+    assert placed["sequence"] == c2 and placed["at_cm"] == [370.0, -20.0, 0.0]
+    assert placed["level"] == "/Game/ThirdPerson/ThirdPersonMap"
 
 
 def test_check_dirty_names_a_user_asset_and_allows_kei_s_own():

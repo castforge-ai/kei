@@ -102,7 +102,8 @@ class FakeEditor:
         self.sequences[path] = {"frames": inp["frames"], "fps": inp["fps"], "copy_from": inp.get("copy_from"),
                                 "keys": []}
         self.made_open = path              # make_sequence.py opens the sequence it made
-        return {"path": path, "fps": int(inp["fps"]), "frames": inp["frames"], "facing": "yaw -90", "dirty": []}
+        return {"path": path, "fps": int(inp["fps"]), "frames": inp["frames"], "facing": "yaw -90", "dirty": [],
+                "placed": {"how": "the floor under the Player Start", "at_cm": [370.0, -20.0, 0.0], "level": "/Game/ThirdPerson/ThirdPersonMap"}}
 
     def read_rig(self, inp):
         out = dict(self.rig)
