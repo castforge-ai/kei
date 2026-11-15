@@ -17,7 +17,10 @@ Each miss starts with the code of the stage it belongs to:
   P8  blocking       out_blocking/ holds two key stills or more (key_f*.png, one per key; keys.png does not count)
                      and blocking.mp4 (or blocking.gif, the playback Kei writes when ffmpeg is missing); GATES.md has
                      "## Blocking gate: pass" with balance, arcs, timing and story lines.
-  P9  passes         GATES.md has the breakdowns, spline (naming a curves image that exists) and polish gates passed.
+  P9  passes         GATES.md has the breakdowns, spline (naming a curves image that exists), overlap, follow-through
+                     and polish gates passed; the newest pass has out_p<n>/principles/principles.json (kei check),
+                     newer than its shot.json, and each of its flags is fixed or declared under "## Declared" in
+                     GATES.md ("- <flag id>: <reason>").
   ORDER              the plan sheet is older than the blocking video, which is older than the newest pass folder.
   P10 checks         the newest pass out_p<n>/ has body_check/body_check.json, newer than its shot.json.
   P11 self-review    the newest pass has SELF_REVIEW_LOG.md whose last verdict line is READY.
@@ -52,6 +55,14 @@ def _section(text, head):
 def _gate(gates, name):
     m = re.search(r"^## %s gate: *(\w+)[^\n]*\n(.*?)(?=^## |\Z)" % name, gates or "", re.M | re.S | re.I)
     return (m.group(1).lower(), m.group(2)) if m else (None, "")
+
+
+def _declared(gates):
+    """The principle flag ids declared in GATES.md under "## Declared", one per line with its reason."""
+    m = re.search(r"^## Declared[^\n]*\n(.*?)(?=^## |\Z)", gates or "", re.M | re.S)
+    if not m:
+        return set()
+    return set(re.findall(r"^\s*[-*]\s*`?([a-z_]+\.[a-z_]+\.[\w-]+\.f\d+)`?\s*[:-]\s*\S", m.group(1), re.M))
 
 
 def _passes(J):
@@ -223,7 +234,7 @@ def check(shot: str, deliver: bool = False) -> tuple[list[str], list[str]]:
             if not re.search(r"^\s*- %s:\s*\S.{10,}" % w, body, re.M | re.I):
                 miss.append('P8 the blocking gate has no "%s:" line' % w)
     # P9
-    for g in ("Breakdowns", "Spline", "Polish"):
+    for g in ("Breakdowns", "Spline", "Overlap", "Follow-through", "Polish"):
         v, body = _gate(gates, g)
         if v != "pass":
             miss.append("P9 GATES.md: the %s gate is %s" % (g.lower(), v or "missing"))
@@ -231,8 +242,27 @@ def check(shot: str, deliver: bool = False) -> tuple[list[str], list[str]]:
             im = re.findall(r"[\w./\\-]+\.png", body)
             if not any(os.path.exists(J(x)) for x in im):
                 miss.append("P9 the spline gate names no curves image that exists")
-    # ORDER
+    # P9: the twelve principles on the newest pass, every flag fixed or declared
     passes = _passes(J)
+    if passes:
+        pj = os.path.join(passes[-1], "principles", "principles.json")
+        sj = os.path.join(passes[-1], "shot.json")
+        if not (os.path.exists(pj) and (not os.path.exists(sj) or os.path.getmtime(pj) > os.path.getmtime(sj))):
+            miss.append("P9 the twelve principles have not been checked on %s: run kei check <shot> %s"
+                        % (os.path.basename(passes[-1]), os.path.basename(passes[-1])[4:]))
+        else:
+            try:
+                with open(pj, encoding="utf-8") as f:
+                    flags = json.load(f).get("flags") or []
+            except ValueError:
+                flags = []
+            ids = _declared(gates)
+            for fl in flags:
+                if fl.get("id") not in ids:
+                    miss.append("P9 %s (%s f%s-%s): %s. Fix it, or declare it in GATES.md under \"## Declared\" "
+                                "as \"- %s: <reason>\"" % (fl.get("id"), fl.get("principle"), fl["frames"][0],
+                                                            fl["frames"][1], fl.get("what"), fl.get("id")))
+    # ORDER
     ps = J("plan", "plan_sheet.png") if os.path.exists(J("plan", "plan_sheet.png")) else J("plan", "pose_sheet.png")
     if os.path.exists(ps) and os.path.exists(bm) and os.path.getmtime(ps) > os.path.getmtime(bm):
         miss.append("ORDER the plan sheet is newer than the blocking pass")

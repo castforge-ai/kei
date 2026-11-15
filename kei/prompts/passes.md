@@ -1,9 +1,26 @@
-Refine in passes: breakdowns, then spline, then polish. Each pass is a new folder out_p<n>/ holding its shot.json; never
-overwrite an earlier pass. After each pass, run `kei render <shot> p<n>` (spline by default) and look at the frames,
-the key sheet and out_p<n>/playback.mp4 (playback.gif when ffmpeg is missing), and run `kei bake <shot> p<n>` so the
-checks read out_p<n>/joints.json. Add to GATES.md "## Breakdowns gate: pass", "## Spline gate: pass" (naming the
-curves image you checked, which must exist) and "## Polish gate: pass". If animating shows the plan was wrong, update
-the plan sheet and say what changed and why.
+Refine in passes, each with its own job, in this order. Each pass is a new folder out_p<n>/ holding its shot.json;
+never overwrite an earlier pass. A pass may take more than one try; the order of the jobs does not change.
+1. Breakdowns and spline: timing and spacing only. Breakdowns are new poses that shape each move (not in-betweens), the
+   spacing eases in and out, the paths arc. Gates "## Breakdowns gate: pass" and "## Spline gate: pass" (naming the
+   curves image you checked, which must exist).
+2. Overlap: offset every chain from the blocking. Name the lead of each move and the order of the parts (OVL38); the
+   driver goes first and each part down the chain trails it a frame or more (OVL3, OVL24); the arms drag behind a
+   trunk turn and catch up; left and right never move in unison (OVL30); no extreme of every part on the same key.
+   Gate "## Overlap gate: pass", listing per move the lead and the frames each part peaks on.
+3. Follow-through and secondary action: at every stop the parts land one after another, the followers overshoot and
+   settle (OVL9, OVL18, OVL19); a hold keeps moving (TIM34); the hands, fingers and breath have their own life
+   below the main action (OVL33). Gate "## Follow-through gate: pass", listing per stop the order the parts land in.
+4. Polish: arcs, contacts, the author's notes, the last details. Gate "## Polish gate: pass".
+After each pass, run `kei render <shot> p<n>` (spline by default) and look at the frames, the key sheet and
+out_p<n>/playback.mp4 (playback.gif when ffmpeg is missing), and run `kei bake <shot> p<n>` (Kei's own rig) so the
+checks read out_p<n>/joints.json. Then run `kei check <shot> p<n>`: besides the body checks, it measures the twelve
+principles (squash and stretch, anticipation, staging, pose to pose, overlap, slow in and out, arcs, secondary action,
+timing, exaggeration, solid drawing, appeal) into out_p<n>/principles/principles.json, each flag with an id, its
+frames and what to change. Every flag is fixed in the next pass, or declared in GATES.md under "## Declared" as
+"- <flag id>: <reason>" when the shot means it (a hard stop on an impact, a stylised pose the author asked for). The
+gate refuses the stage while a flag of the newest pass is neither fixed nor declared. A pass that only smooths the
+blocking (every extreme still on a blocking key) is flagged pose_to_pose: it is not a pass yet.
+If animating shows the plan was wrong, update the plan sheet and say what changed and why.
 
 The shot format, the same as blocking:
     {"rig": "v4", "fps": 24, "frames": 48, "loop": false,
@@ -42,7 +59,9 @@ The commands:
 - `kei bake <shot> p<n>` writes out_p<n>/joints.json, the joints of every frame, for the checks.
 - `--camera follow` (ride the even travel) and `--camera delivery` (the plan's locked camera) render a travelling
   shot so it can be judged, into out_p<n>/follow/ and out_p<n>/delivery/.
-- `kei check <shot> p<n>` measures the pass (contacts, foot slide, balance, joint ranges, arcs).
+- `kei check <shot> p<n>` measures the pass: body_check.json (contacts, foot slide, balance, joint ranges, arcs)
+  and principles.json (the twelve principles).
+- `kei rule <ID> [<ID> ...]` prints a rule of the book in full.
 
 A shot in Maya (the shot folder has maya/scene.ma) keeps the same shot.json: Kei's channels, or the rig's own
 controls with `"rig": "maya"` and keys like `"l_foot_ik_ctl.translateY": 8.0` (degrees and the scene's unit). After

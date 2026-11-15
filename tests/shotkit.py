@@ -38,6 +38,10 @@ GATES = """## Blocking gate: pass
 - the favouring is on the fall
 ## Spline gate: pass
 - curves out_p1/curves.png read smooth
+## Overlap gate: pass
+- the corner leads, the far edge trails it two frames
+## Follow-through gate: pass
+- the box lands, then rocks once and settles
 ## Polish gate: pass
 - the settle holds
 """
@@ -98,6 +102,7 @@ def stage_blocking(root):
 def stage_passes(root):
     touch_later(root, "out_p1/curves.png")
     write(root, "out_p1/shot.json", "{}")
+    touch_later(root, "out_p1/principles/principles.json", '{"flags": []}')
     write(root, "GATES.md", GATES)
 
 

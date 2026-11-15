@@ -11,6 +11,12 @@ Judge the stage under review against the artifacts the earlier stages left in th
   trunk_lean flags in body_check.json, and look at the key images yourself; a check can miss what the eye sees.
 - The stage left every file its contract asks for, and what those files show is true of the motion.
 
+- The twelve principles, by name, from the newest pass's principles/principles.json (written by kei check): squash
+  and stretch, anticipation, staging, pose to pose, overlap, slow in and out, arcs, secondary action, timing,
+  exaggeration, solid drawing, appeal. A flag neither fixed nor declared in GATES.md is a fault. A declared flag
+  whose reason does not hold is a fault. A pass whose extremes all still sit on the blocking keys (pose to pose) is
+  a smoothed blocking, not a pass: send it back. Judge the "unchecked" ones (appeal, exaggeration) on the frames.
+
 Send the work back only for a fault you can point to. Say where it is and what to change. A send-back names a
 visible fault in the motion or a failed check: a pose, a timing, a contact, a balance, an arc, a flag left
 undeclared. A record that is missing or out of date (a comparison, a trail, a copy of the plan, a label in a review
