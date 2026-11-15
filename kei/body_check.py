@@ -432,4 +432,10 @@ def check_pass(shot_dir: Path, pass_name: str, character: str, mode: str | None 
     dst = out / "body_check" / "body_check.json"
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    from kei.principles import check_principles   # the twelve principles, on the same frames
+    joints = frames if frames is not None else _frames(shot, mode, ch.proportions)
+    speed = in_place_speed(shot)
+    if speed:
+        joints = _treadmill(joints, speed, float(shot.get("fps") or 24))
+    check_principles(Path(shot_dir), pass_name, joints, float(shot.get("fps") or 24), ch.height)
     return dst

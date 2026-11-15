@@ -153,6 +153,22 @@ def _live_page(shot: Path, config) -> None:
         print(f"live page: {url}")
 
 
+def _cmd_rule(a) -> int:
+    from kei.book import load_rules, load_topics
+    config = load_config(_config_path(a.config))
+    rules = {r.id: r for t in load_topics(config.book) for r in t.rules}
+    rules.update({r.id: r for r in load_rules([config.lessons])})
+    missing = [i for i in a.ids if i not in rules]
+    for i in a.ids:
+        if i in rules:
+            r = rules[i]
+            print(f"### {r.id}. {r.title}\n{r.text}\n")
+    if missing:
+        print("kei: no rule " + ", ".join(missing))
+        return EXIT_ERROR
+    return EXIT_DONE
+
+
 def _cmd_live(a) -> int:
     from kei.live.serve import serve
     shot = Path(a.shot)
@@ -979,6 +995,18 @@ def _cmd_check(a) -> int:
         print(f"- {f['check']} f{f['frames'][0]}-{f['frames'][1]}: {f['what']}")
     print(report["summary"])
     print(f"written: {path}")
+    pr_path = path.parent.parent / "principles" / "principles.json"
+    if pr_path.is_file():
+        from kei.principles import undeclared
+        pr = json.loads(pr_path.read_text(encoding="utf-8"))
+        gates = Path(a.shot) / "GATES.md"
+        open_ = undeclared(pr, gates.read_text(encoding="utf-8") if gates.is_file() else "")
+        print("the twelve principles: " + ", ".join(f"{k} {v}" for k, v in pr["summary"].items()))
+        for f in open_:
+            print(f"- {f['id']} f{f['frames'][0]}-{f['frames'][1]}: {f['what']}")
+        print(f"{len(open_)} principle flag(s) open: fix each, or declare it in GATES.md under \"## Declared\" as "
+              "\"- <id>: <reason>\"" if open_ else "no principle flag open")
+        print(f"written: {pr_path}")
     return EXIT_DONE
 
 
@@ -1118,6 +1146,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--app", choices=("kei", "maya", "unreal"), help="where the keys live (default: kei.toml [apps] app)")
     r.add_argument("--scene", help="with --app maya: your Maya scene, copied into the shot (never written)")
     r.set_defaults(fn=_cmd_run)
+    ru = sub.add_parser("rule", help="print rules of the book (or local lessons) in full, by ID")
+    ru.add_argument("ids", nargs="+", metavar="ID")
+    ru.add_argument("--config", default=None, help="kei.toml (default: ./kei.toml, else kei.example.toml)")
+    ru.set_defaults(fn=_cmd_rule)
     lv = sub.add_parser("live", help="open the shot's live page: the stage, the key poses of each try, the critics' "
                         "notes on their frames, the references and the renders, updated as Kei works (kei run "
                         "starts it unless [live] page = \"off\")")
@@ -1196,7 +1228,9 @@ def main(argv: list[str] | None = None) -> int:
                           ("bake", _cmd_bake, "write out_<pass>/joints.json, the joints of every frame"),
                           ("check", _cmd_check, "measure a pass on the character (contacts, a hovering foot, "
                                                 "foot slide, balance, knee snaps, "
-                                                "joint ranges, arcs) into out_<pass>/body_check/body_check.json")):
+                                                "joint ranges, arcs) into out_<pass>/body_check/body_check.json, "
+                                                "and the twelve principles into "
+                                                "out_<pass>/principles/principles.json")):
         c = sub.add_parser(cmd, help=text)
         if cmd == "render":
             c.add_argument("shot", nargs="?")
