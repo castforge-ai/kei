@@ -70,11 +70,40 @@ def subject_index(topics: list[Topic]) -> str:
             '"Subjects: all". When unsure, include the topic:\n' + "\n".join(rows))
 
 
+# The stages that make and judge the motion get the topics of their job in full, first; their other rules come as an
+# index (ID, title, topic) that the agent reads one by one with `kei rule <ID>`. Sent whole, 300 rules drown the dozen
+# that make the motion live: follow-through, overlap, spacing, arcs.
+PRINCIPLE_TOPICS = ("overlap", "spacing", "arcs", "timing", "anticipation", "squash-stretch", "staging", "appeal",
+                    "posing")
+CORE: dict[str, tuple[str, ...]] = {
+    "plan": ("posing", "staging", "timing", "anticipation", "appeal", "blocking", "weight"),
+    "blocking": ("posing", "staging", "timing", "anticipation", "appeal", "blocking", "weight", "overlap"),
+    "passes": ("overlap", "spacing", "arcs", "timing", "anticipation", "squash-stretch", "appeal", "weight", "posing"),
+    "checks": ("review",) + PRINCIPLE_TOPICS,
+    "self_review": ("review",) + PRINCIPLE_TOPICS,
+}
+
+
 def stage_block(stage_id: str, topics: list[Topic], lessons: list[Rule], subjects: list[str] | None) -> str:
-    """The rules one stage gets. subjects None or containing all means every subject topic."""
+    """The rules one stage gets. subjects None or containing all means every subject topic. A stage in CORE gets its
+    core topics, the subjects the shot named and the local lessons in full, and the rest of its rules as an index."""
     every = subjects is None or ALL in subjects
-    rules: list[Rule] = []
+    core = CORE.get(stage_id)
+    if core and not any(t.name in core for t in topics):
+        core = None              # a book of other topics than Kei's own: every rule in full, as before
+    full: list[Rule] = []
+    index: list[tuple[Rule, str]] = []
     for t in topics:
-        if t.kind == "principle" or every or t.name in subjects:
-            rules += t.rules
-    return rules_block(rules_for(rules + lessons, stage_id))
+        if not (t.kind == "principle" or every or t.name in subjects):
+            continue
+        named = t.kind == "subject" and not every and t.name in subjects
+        if core is None or t.name in core or named:
+            full += t.rules
+        else:
+            index += [(r, t.name) for r in rules_for(t.rules, stage_id)]
+    text = rules_block(rules_for(full + lessons, stage_id))
+    if index:
+        text += ("\n\nMore rules for this stage, by title. Read any that bear on what you are doing with "
+                 "`kei rule <ID> [<ID> ...]` before you decide it:\n"
+                 + "\n".join(f"- {r.id}. {r.title} ({topic})" for r, topic in index))
+    return text
