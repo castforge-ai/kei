@@ -65,12 +65,23 @@ def _kill_tree(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
+def _user_scripts() -> str | None:
+    """The per-user scripts folder, when Kei was installed there (pip install --user): its kei command lives there,
+    and that folder is often not on PATH."""
+    try:
+        d = sysconfig.get_path("scripts", f"{os.name}_user")
+    except KeyError:
+        return None
+    exe = "kei.exe" if os.name == "nt" else "kei"
+    return d if d and os.path.isfile(os.path.join(d, exe)) else None
+
+
 def seat_env() -> dict[str, str]:
     """The seat's environment: Kei's own scripts folder (where the kei command and Kei's python live) first on PATH,
     so a seat that runs `kei render` or `python` gets this Kei, even from a shell that never activated it."""
     env = dict(os.environ)
     first = []
-    for d in (sysconfig.get_path("scripts"), os.path.dirname(sys.executable)):
+    for d in (sysconfig.get_path("scripts"), _user_scripts(), os.path.dirname(sys.executable)):
         if d and os.path.normcase(d) not in map(os.path.normcase, first):
             first.append(d)
     rest = [p for p in env.get("PATH", "").split(os.pathsep)
