@@ -851,6 +851,22 @@ def _cmd_unreal_pose(a) -> int:
     return EXIT_DONE
 
 
+def _cmd_unreal_style(a) -> int:
+    from kei.apps import unreal_stage
+    from kei.characters import load_character
+    src = Path(a.shot) / "out_blocking" / "shot.json"
+    shot = read_json(src, "shot") if src.is_file() else None
+    ch = load_character(_character_of(a, shot))
+    r = unreal_stage.style(Path(a.shot), a.anim, ch, a.fps)
+    print(f"her style range, from {len(r['clips'])} clip(s) of her own: {r['path']}")
+    for m, v in sorted(r["range"].items()):
+        print(f"- {m}: up to {v['max']} ({v['clip'].rsplit('/', 1)[-1]}, f{v['frames'][0]}-{v['frames'][1]})")
+    if not r["range"]:
+        print("- no soft check goes past Kei's realism thresholds in these clips: the range adds nothing")
+    print("largest move per part (cm): " + ", ".join(f"{p} {cm}" for p, cm in sorted(r["move_cm"].items())))
+    return EXIT_DONE
+
+
 def _export_unreal(a) -> int:
     from kei.apps import unreal_stage
     from kei.apps.unreal_bake import bake_lines
@@ -992,7 +1008,15 @@ def _cmd_check(a) -> int:
     report = json.loads(path.read_text(encoding="utf-8"))
     print(f"character: {character}, mode: {report['mode']}")
     for f in report["flags"]:
-        print(f"- {f['check']} f{f['frames'][0]}-{f['frames'][1]}: {f['what']}")
+        tag = ""
+        if f.get("inside_style"):
+            tag = f" (note: inside her style range, as in {f['style_clip']})"
+        elif f.get("note"):
+            tag = " (note: the register is pushed)"
+        print(f"- {f['check']} f{f['frames'][0]}-{f['frames'][1]}: {f['what']}{tag}")
+    if "style" in report:
+        print(f"register: {report['style']['register']}; style range: "
+              + ("rig/style.json" if report["style"]["style_range"] else "none yet (kei unreal style)"))
     print(report["summary"])
     print(f"written: {path}")
     pr_path = path.parent.parent / "principles" / "principles.json"
@@ -1380,6 +1404,15 @@ def main(argv: list[str] | None = None) -> int:
     uc.add_argument("pass_name", metavar="pass", help="blocking, p1, p2, ...")
     uc.add_argument("--frame", type=int, help="the frame to draw (default: the middle key frame)")
     uc.set_defaults(fn=_cmd_unreal_capture_test)
+    us = usub.add_parser("style", help="the character's style range from their own clips in the project: how far each "
+                                       "soft body check goes in them (rig/style.json); flags inside it become notes")
+    us.add_argument("shot")
+    us.add_argument("--anim", action="append", required=True,
+                    help="a clip of this character, by asset path; repeat for more. Pick clips like this shot")
+    us.add_argument("--fps", type=float, default=30.0, help="the clips' frame rate (default 30)")
+    us.add_argument("--character", help="the character (default: the shot's)")
+    us.add_argument("--config", help="kei.toml (default: ./kei.toml, else kei.example.toml)")
+    us.set_defaults(fn=_cmd_unreal_style)
     up = usub.add_parser("pose", help="put a frame of an animation already in the project onto the character's "
                                       "Control Rig and write its control values as keys (rig/pose_<anim>_f<n>.json)")
     up.add_argument("shot")

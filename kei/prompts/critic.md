@@ -9,6 +9,10 @@ Judge the stage under review against the artifacts the earlier stages left in th
   step, and the trunk does not lean back against the travel. A body that would fall behind once the rear foot
   lifts, or that leans back on a forward walk, falls behind: send it back with the key. Read the balance and
   trunk_lean flags in body_check.json, and look at the key images yourself; a check can miss what the eye sees.
+- Judge the soft body flags (balance, trunk lean, knee and elbow range, arc kinks, a wide stance, a neck bend, a
+  straight arm) against PLAN.md's Register line and the character's style range, rig/style.json. A flag marked
+  "note" is the character's own: never send the work back for it, and never ask to correct a pose the author gave
+  or one taken from the character's clips toward textbook mechanics. Hard flags are faults in every register.
 - The stage left every file its contract asks for, and what those files show is true of the motion.
 
 - The twelve principles, by name, from the newest pass's principles/principles.json (written by kei check): squash

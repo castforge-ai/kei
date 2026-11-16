@@ -221,6 +221,21 @@ def pose_shot(shot_dir: Path, anim: str, frame: int = 0,
     return pose_from_anim(connect_waiting(editor.url), shot_dir, anim, frame)
 
 
+def style(shot_dir: Path, anims: list[str], character, fps: float = 30.0,
+          probe: Callable[[str], dict | None] = probe_editor) -> dict:
+    """What kei unreal style does: the character's style range from their own clips, into rig/style.json."""
+    from kei.apps.unreal_style import style_shot
+    shot_dir = Path(shot_dir)
+    target = load_target(shot_dir)
+    if not target or target.get("kind") != "open":
+        raise ShotError(f"{shot_dir} is not an Unreal shot: kei run --app unreal {shot_dir} chooses the editor")
+    editor = locate_waiting(target, probe)
+    if editor is None:
+        raise UnrealError(f"the Unreal Editor for project {target.get('project') or 'unnamed'} does not answer: open "
+                          f"it with Claireon's server on, then run kei unreal style again")
+    return style_shot(connect_waiting(editor.url), shot_dir, anims, character, fps)
+
+
 def key_pass(shot_dir: Path, pass_name: str, config, probe: Callable[[str], dict | None] = probe_editor) -> dict:
     """What kei unreal key does: key the pass in Kei's own sequence, read the motion back into joints.json. A lost
     editor or a user asset made dirty leaves a stop file for the conductor, then raises."""

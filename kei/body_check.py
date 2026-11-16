@@ -279,7 +279,7 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
     for a, b in _runs(out_frames):
         if b - a + 1 >= BALANCE_RUN:
             far = max(worst[f] for f in range(a, b + 1))
-            flags.append({"check": "balance", "frames": [a, b],
+            flags.append({"check": "balance", "frames": [a, b], "measure": "balance_outside_m", "value": round(far, 4),
                           "what": f"the centre of mass stays outside the support for {b - a + 1} frames "
                                   f"(up to {far:.3f} m out): fix the pose or declare it as a fall"})
     # balance against the travel: behind the support's back edge, and the trunk's lean, both along the direction the
@@ -304,14 +304,15 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
                 lean_back[fr["f"]] = -lean
         for a, b in _runs(behind):
             far = max(max_behind[f] for f in range(a, b + 1))
-            flags.append({"check": "balance", "frames": [a, b],
+            flags.append({"check": "balance", "frames": [a, b], "measure": "balance_behind_m", "value": round(far, 4),
                           "what": f"the centre of mass is up to {far:.3f} m behind the support, against the travel: "
                                   f"the body falls backward, and no next step catches a fall backward. Move the mass "
                                   f"over the support before the rear foot leaves, or shorten the reach of the front "
                                   f"foot"})
         for a, b in _runs(sorted(lean_back)):
             far = max(lean_back[f] for f in range(a, b + 1))
-            flags.append({"check": "trunk_lean", "frames": [a, b],
+            flags.append({"check": "trunk_lean", "frames": [a, b], "measure": "trunk_lean_back_deg",
+                          "value": round(far, 1),
                           "what": f"the trunk (pelvis to neck) leans back up to {far:.1f} deg against the travel: "
                                   f"on the side view the body reads as falling behind. A walk tips forward about "
                                   f"6 deg (LOC16)"})
@@ -358,7 +359,9 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
     for (what, s), by_frame in found.items():
         for a, b in _runs(sorted(by_frame)):
             v = max(by_frame[f] for f in range(a, b + 1))
+            soft = {"knee_max": "knee_max_deg", "elbow_max": "elbow_max_deg"}.get(what)
             flags.append({"check": "joint_ranges", **({"side": s} if s else {}), "frames": [a, b],
+                          **({"measure": soft, "value": round(v, 1)} if soft else {}),
                           "what": words[what].format(s=s, v=v)})
     for s in "lr":
         for f, size, kind, b in knee_snaps(knee_bend[s], [fr["f"] for fr in frames], bool(shot.get("loop"))):
@@ -395,7 +398,7 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
                     kinks.append((fb, turn))
         arcs[part] = {"kinks": [[f, round(t, 1)] for f, t in kinks]}
         for f, t in (kinks if mode != "step" else []):
-            flags.append({"check": "arcs", "part": part, "frames": [f, f],
+            flags.append({"check": "arcs", "part": part, "frames": [f, f], "measure": "arc_kink_deg", "value": round(t, 1),
                           "what": f"the {part} path turns {t:.0f} deg at once while moving: the arc breaks"})
 
     flags.sort(key=lambda fl: (fl["frames"][0], fl["check"]))
@@ -427,8 +430,13 @@ def check_pass(shot_dir: Path, pass_name: str, character: str, mode: str | None 
               "fps": shot.get("fps") or 24, "frames": shot.get("frames") or len(frames or []) - 1,
               "loop": bool(shot.get("loop")), **({"in_place_speed_mps": in_place_speed(shot)} if in_place_speed(shot) else {}), **({"joints_from": data.get("source")} if frames else {}),
               **measure(shot, mode, ch.proportions, ch.height, frames)}
-    report["summary"] = (f"{len(report['flags'])} flag(s): fix each at a key, or declare it with a reason"
-                         if report["flags"] else "no flag")
+    from kei.style import apply, load_style, register
+    report["style"] = apply(report["flags"], load_style(Path(shot_dir)), register(Path(shot_dir)))
+    faults = report["style"]["faults"]
+    notes = report["style"]["notes"]
+    report["summary"] = ((f"{faults} flag(s): fix each at a key, or declare it with a reason" if faults else
+                          "no flag")
+                         + (f"; {notes} note(s) inside her style range or the register, not faults" if notes else ""))
     dst = out / "body_check" / "body_check.json"
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text(json.dumps(report, indent=1), encoding="utf-8")
