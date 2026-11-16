@@ -76,6 +76,13 @@ that name a control and a channel of the character's Control Rig, read from rig/
 shot.json, run `kei unreal key <shot> <pass>`. It keys the controls in Kei's own sequence in the open editor and
 writes out_<pass>/joints.json from Unreal for the checks (do not run `kei bake` on an Unreal shot). A locked or
 unknown channel is refused by name; a pose a limit held back is listed in out_<pass>/unreal_report.json.
+From p2 on, each pass is a layer of the one before it. Start the pass's shot.json from the previous pass's (a copy,
+every frame keyed, the same tangents) and change only the channels and the frames the pass's job or the author's
+note bears on; leave every other value exactly as it was. `kei unreal key` then copies the previous pass's sequence,
+writes only the differences on an additive layer over those frames, and merges it down: what was already right
+cannot drift. out_<pass>/unreal_report.json "layer" lists the controls and frames each pass changed; when a pass
+changes the tangents, the length, or a switch, it says why the pass was keyed whole instead. The previous pass's
+sequence stays as it was, for before and after.
 The fingers and toes come back too: out_<pass>/hands_toes.json gives each finger joint's curl (positive closes it
 toward the palm, negative bends it backward) and each toe's lift against the foot, per frame, with flags for a finger
 bent backward and for toes bent down (a flick in the air, or digging into the floor). Read it before you ask the

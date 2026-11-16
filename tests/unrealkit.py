@@ -58,6 +58,7 @@ class FakeEditor:
         self.pose_check = {"bones": 113, "mean_deg": 0.24, "worst_deg": [["spine_03", 7.33]],
                            "pelvis_relative_cm": {"head": 0.0, "hand_l": 0.0, "foot_l": 1.8}}
         self.poses: list[dict] = []
+        self.missing_channels: set[str] = set()
 
     def handlers(self) -> dict:
         return {"probe": self.probe, "make_sequence": self.make_sequence, "read_rig": self.read_rig,
@@ -65,7 +66,7 @@ class FakeEditor:
                 "open_sequence": self.open_sequence, "eval_rig": self.eval_rig, "bake": self.bake,
                 "read_bake": self.read_bake, "organize": self.organize,
                 "unload_kei": self.unload_kei, "capture_frame": self.capture_frame,
-                "load_pose": self.load_pose}
+                "load_pose": self.load_pose, "layer_keys": self.layer_keys}
 
     def server(self) -> FakeClaireon:
         self.fake = FakeClaireon(self.handlers())
@@ -135,6 +136,15 @@ class FakeEditor:
                                     "reached": reached, "f": k["frame"]})
             keyed += sum(len(v) for v in k["controls"].values())
         return {"keyed": keyed, "clipped": clipped}
+
+    def layer_keys(self, inp):
+        """The layer of a pass: recorded on the sequence; missing_channels names channels the section lacks."""
+        missing = [n for n in inp["channels"] if n in self.missing_channels]
+        if not missing:
+            self.sequences[inp["sequence"]]["layer"] = inp["channels"]
+            self.dirty.add(inp["sequence"])
+        return {"keyed": 0 if missing else sum(len(v) for v in inp["channels"].values()),
+                "channels": len(inp["channels"]), "missing": missing, "collapsed": not missing, "sections": 1}
 
     def capture_frame(self, inp):
         self.captures.append(inp)
