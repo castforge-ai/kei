@@ -78,15 +78,21 @@ def posing_flags(frames: list[dict], knee_bend: dict, elbow_bend: dict, k: float
     fs = [fr["f"] for fr in frames]
     both = [_planted(fr["joints"], "l", contact_h) and _planted(fr["joints"], "r", contact_h) for fr in frames]
 
-    wide = []
+    wide, ratio = [], {}
     for fr, on in zip(frames, both):
         j = fr["joints"]
-        hips = abs(j["thigh_l"][0] - j["thigh_r"][0]) or 1e-9
-        if on and abs(j["foot_l"][0] - j["foot_r"][0]) / hips > STANCE_MAX:
+        # across the body: along the hips' own left-right line on the ground, so a turned pelvis is not read as
+        # narrow hips and a wide stance
+        ax, az = j["thigh_l"][0] - j["thigh_r"][0], j["thigh_l"][2] - j["thigh_r"][2]
+        hips = math.hypot(ax, az) or 1e-9
+        r = abs((j["foot_l"][0] - j["foot_r"][0]) * ax + (j["foot_l"][2] - j["foot_r"][2]) * az) / hips / hips
+        if on and r > STANCE_MAX:
             wide.append(fr["f"])
+            ratio[fr["f"]] = r
     for a, b in _runs(wide):
         if b - a + 1 >= STANCE_RUN:
-            flags.append({"check": "posing", "frames": [a, b], "what":
+            flags.append({"check": "posing", "frames": [a, b], "measure": "stance_hip_widths",
+                          "value": round(max(ratio[f] for f in range(a, b + 1)), 2), "what":
                           f"the feet are more than {STANCE_MAX:g} hip widths apart across the body with both planted: "
                           "an A-frame, not a stance"})
 
@@ -109,7 +115,8 @@ def posing_flags(frames: list[dict], knee_bend: dict, elbow_bend: dict, k: float
             kinked.append(fr["f"])
             worst[fr["f"]] = bend
     for a, b in _runs(kinked):
-        flags.append({"check": "posing", "frames": [a, b], "what":
+        flags.append({"check": "posing", "frames": [a, b], "measure": "neck_bend_deg",
+                      "value": round(max(worst[f] for f in range(a, b + 1) if f in worst), 1), "what":
                       f"the neck breaks by up to {max(worst[f] for f in range(a, b + 1) if f in worst):.0f} deg "
                       f"between its segments (past {NECK_BEND:g}): a kink, not a nod"})
 
@@ -117,7 +124,8 @@ def posing_flags(frames: list[dict], knee_bend: dict, elbow_bend: dict, k: float
         straight = [f for f, e in zip(fs, elbow_bend[s]) if e < ARM_STRAIGHT_DEG]
         for a, b in _runs(straight):
             if b - a + 1 >= ARM_RUN:
-                flags.append({"check": "posing", "side": s, "frames": [a, b], "what":
+                flags.append({"check": "posing", "side": s, "frames": [a, b], "measure": "straight_arm_frames",
+                              "value": b - a + 1, "what":
                               f"the {s} arm is dead straight (elbow under {ARM_STRAIGHT_DEG:g} deg) for "
                               f"{b - a + 1} frames: bend it a little"})
 
