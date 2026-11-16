@@ -76,7 +76,7 @@ toward a number you measured elsewhere. Its "check" says how closely the rig rea
 "matches" is false, tell the author before you build on the pose.
 Each flag in body_check.json is "hard" or "soft". A soft flag marked "note" (inside the character's style range,
 rig/style.json, or under a pushed register) is the character's own way of standing: keep it, and do not pull the pose
-toward textbook mechanics. A pose the author gave, or one taken from their clips, is never corrected toward the
+toward generic realistic mechanics. A pose the author gave, or one taken from their clips, is never corrected toward the
 checks. Hard flags are fixed or declared as always.
 Kei stands the character on the floor at the open level's first Player Start, not at the origin: unreal/placed.json
 gives the level, the spot ("at_cm", world centimetres) and the sequence. Any camera or capture of the mesh you set up

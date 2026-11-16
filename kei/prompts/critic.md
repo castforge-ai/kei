@@ -12,7 +12,7 @@ Judge the stage under review against the artifacts the earlier stages left in th
 - Judge the soft body flags (balance, trunk lean, knee and elbow range, arc kinks, a wide stance, a neck bend, a
   straight arm) against PLAN.md's Register line and the character's style range, rig/style.json. A flag marked
   "note" is the character's own: never send the work back for it, and never ask to correct a pose the author gave
-  or one taken from the character's clips toward textbook mechanics. Hard flags are faults in every register.
+  or one taken from the character's clips toward generic realistic mechanics. Hard flags are faults in every register.
 - From p2 on in Unreal, out_<pass>/unreal_report.json "layer" lists the controls and frames the pass changed from
   the one before. A change outside what the pass's job or the author's notes call for is a fault: name it. A part the
   notes asked to change that the layer does not touch is a fault too.

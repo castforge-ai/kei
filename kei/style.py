@@ -1,7 +1,7 @@
 """A character's style range, from their own shipped animation, and the register the author sets for a shot.
 
 Kei's body checks are realism rules. A stylized character breaks some of them on purpose in every clip they ship, and
-a critic that reads those flags as faults pushes the pose back toward textbook mechanics. So:
+a critic that reads those flags as faults pushes the pose back toward generic realistic mechanics. So:
 
   hard rules   stay faults whatever the style: contacts, hover, foot slide, a knee bending backward, reach, a knee
                snap, locked knees, a body that does not move. A flag of a hard rule has no "measure".
