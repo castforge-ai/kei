@@ -4,7 +4,8 @@ If the request is unclear, or you cannot tell which character or rig to use, wri
 and stop. Ask at the start whatever the start can settle; any later stage may still ask what only the author can
 answer.
 When the rule book lists subject topics below, add a line "Subjects: <names>" to PLAN.md naming every subject this
-shot touches (a walk carrying a box: locomotion, actions, arms-hands). When unsure, include the topic; "Subjects: all"
+shot touches (a walk carrying a box: locomotion, actions, arms-hands). A shot with a character that has a want or an attitude,
+an idle breaker above all, always names personality. When unsure, include the topic; "Subjects: all"
 is always allowed. Every later stage gets the principles plus these subjects.
 Ask the author for the register of the shot, and write their answer on a line "Register: realistic", "Register:
 stylized" or "Register: pushed" in PLAN.md. Never guess it: with no answer, leave the line out (Kei then judges as

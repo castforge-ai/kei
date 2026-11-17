@@ -1,4 +1,4 @@
-"""The book that ships with Kei is the folder kei/book: 24 topic files, 847 rules, read by the real loader."""
+"""The book that ships with Kei is the folder kei/book: 25 topic files, 924 rules, read by the real loader."""
 import re
 
 from kei.book import ALL, BUNDLED_BOOK, load_topics
@@ -20,11 +20,11 @@ def test_the_default_book_is_the_kei_book_folder():
     assert not (BUNDLED_BOOK / "rules.md").exists()
 
 
-def test_the_shipped_book_is_24_topics_with_847_unique_rule_ids():
+def test_the_shipped_book_is_25_topics_with_924_unique_rule_ids():
     topics = load_topics(BUNDLED_BOOK)
-    assert len(topics) == 24 and len(files()) == 24
+    assert len(topics) == 25 and len(files()) == 25
     ids = [r.id for t in topics for r in t.rules]
-    assert len(ids) == 847 and len(set(ids)) == 847
+    assert len(ids) == 924 and len(set(ids)) == 924
 
 
 def test_every_rule_has_a_valid_stages_line_right_under_its_heading():
@@ -54,7 +54,7 @@ def test_principle_and_subject_kinds_are_as_in_the_files():
         assert len(kinds) == 1 and kinds[0] in ("principle", "subject"), f.name
         assert topics[f.stem].kind == kinds[0], f.name
     kinds = [t.kind for t in topics.values()]
-    assert (kinds.count("principle"), kinds.count("subject")) == (15, 9)
+    assert (kinds.count("principle"), kinds.count("subject")) == (15, 10)
 
 
 def default_config(tmp_path):

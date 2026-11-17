@@ -275,7 +275,7 @@ passes, review, known pitfalls) and subjects a shot picks (locomotion, actions, 
 acting, the character, reference, creatures and effects, game animation). Each rule says which stages it serves, so
 every stage gets the rules for its work and nothing else.
 
-The book lives in this repository, in [`kei/book`](kei/book): one file per topic, 24 topics, 847 rules. It ships
+The book lives in this repository, in [`kei/book`](kei/book): one file per topic, 25 topics, 924 rules. It ships
 with Kei and is the book every shot reads unless you name another one. Each topic file starts with a `kind:` line
 (`principle` or `subject`); each rule is a `###` heading with its ID and title, then a `stages:` line.
 

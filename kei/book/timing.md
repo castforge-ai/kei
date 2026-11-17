@@ -419,3 +419,55 @@ fixed, and afterwards compare it with the old version by numbers; declare any ch
 every check on each pass that changed, apply the same fix to other shots with the same fault, and test each fix
 against the one-sentence idea of the shot. To tune a timing value, first try one that is clearly overdone, then
 split the difference toward whichever side looked better; change one thing per version.
+
+### TIM49. Place a breakdown near one side of the move
+stages: blocking, passes
+
+In a 6 frame move, set the breakdown 4 frames after the first pose and 2 before the last, so the move slows out of
+the first pose or into the last. The timing stays 6 frames; only the spacing changes. A straight 45 degree curve is
+even spacing, and an arc that favours one side is eased. Lead with the shoulder or elbow, keep the arcs, and let the
+head lag a little. Check the silhouette so a foreshortened arm does not hide the action.
+
+### TIM50. Pad a fast move with 1 to 3 frames
+stages: passes
+
+After a fast move, add a soft pad at the peak: take the extreme a little further in a short taper, or hold it with
+a frame before it that already shows some of the direction. The curve is a sharp spike, then a taper. A padded move
+can land and stay, with no overshoot and return. A large one frame move with no pad looks stepped. The pad is a key
+with a flat tangent next to the peak, its neighbour keys 1 to 2 frames away, while the other keys sit about 4 frames
+apart.
+
+### TIM51. Keep a 30 frame hold alive with a drift of about one degree
+stages: passes, self_review
+
+Continue the motion the character was in: if it came forward, slow, go a little more forward, then back slightly.
+Put keys at the start, the middle and just before the next move, about 14 frames up and 15 back. The spine rotation
+stays within about one degree. Keep the tangents at the peak sloped, never flat, and let no curve end on a flat line.
+Add the body first, then the neck and head in the same direction, and play the hold. Add more only if it still looks
+dead. Try too much return first, then pull it back. Keep the drift on its own layer so it can be turned down.
+
+### TIM52. Land a foot in about 2 frames with the middle at about 25 percent
+stages: passes
+
+For weight, set only the arrival key of a step to a fast in tangent and leave a flat tangent on the leaving key, so
+the foot eases out of the front pose and hits fast. The arrival move is about 2 frames long and its middle
+in-between sits about 25 percent along, not 50. Let weight go over one leg before the other foot lifts. Make the
+foot lift one smooth round arch. A shuffle is a staircase of 4 to 5 steps, the steps about 5 to 6 frames and the
+flats about 2 frames, with a key 2 frames before each step.
+
+### TIM53. Reach from the shoulder
+stages: blocking, passes
+
+Lift the shoulder with the arm, and from the chest if the character is heavy. An arm raised by the hand control alone
+on a still shoulder is weightless. Make the key reach a straight line from fingertip to shoulder before contact, with
+a clean elbow arc and no pop, and check it by scrubbing in the shot camera. Push how far the elbow goes back so the
+extreme snaps.
+
+### TIM54. Every stop settles, and dirt comes last
+stages: passes, self_review
+
+Ease in and out of a pose even for one frame, overshoot so a move does not stop and die, and settle so a stopped
+character keeps a little life in hand, fingers or head, with gravity still acting. A settle is a small dip and rise
+over about 5 frames. A blink is a drop, a short hold, a round hump and a small tail. In the last pass add dirt: a
+pointing finger does not hold perfectly clean. Make the pattern large first, then scale it down until it is just
+there, on its own layer if the rig has one.

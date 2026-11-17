@@ -467,3 +467,153 @@ out from the torso so they clear it, declare that angle, and keep carried gear a
 gear worn on the back is safest. Look at the idle in front and side views, on both the biggest and the smallest
 body, for any forearm or hand cutting the hip, a belt or a prop. On a single fixed body, the natural rest pose
 applies.
+
+### HND48. A dynamic hand has a line of action
+stages: plan, blocking, self_review
+
+A strong hand pose has tension: a line runs through the hand and force spreads from it, as limbs do from a body. A
+bland, soft, middle-of-the-road pose is weak. The hand either continues the line of action of the body or stresses
+the idea. Match the pose to the character: a timid one is softer, a heroic one is more dramatic. On a hand with
+simple fingers the line is still carried by the finger group and the wrist.
+
+### HND49. Collect hand reference and find out why a pose works
+stages: references, study
+
+Collect hand poses from drawings, comics, old model sheets, film and your own hands. When one looks strong, stop
+and work out why. Act the reference naturally and forget the camera. Do five or six takes to warm up. Put the
+exaggeration in the animation, not in the reference.
+
+### HND50. Group the fingers and vary the spacing
+stages: blocking, passes, checks
+
+Avoid an evenly splayed hand. Group the fingers (the two middle ones together, the index set a little apart) with
+varied gaps that are not glued shut. Do not group both hands the same way. Keep the fingers on different planes. A
+round fist with uneven knuckles and a bent thumb beats a blocky fist with even knuckles. Leave no hand on the
+rig's default shape, even in rough blocking; give it a relaxed pose first.
+
+### HND51. Involve the wrist, bend in two axes, and move the thumb from its base
+stages: blocking, passes, checks
+
+Break the wrist line and use the wrist in every hand pose. Fingers move mainly in two ways: bending and spreading.
+Add twist only to fix a pose such as a fist. Side rotation of a finger joint is impossible, but it may be cheated
+in a breakdown. Check the pose from the shot camera: show all fingers, and add a little perspective so the thumb
+does not point at the lens. The thumb moves mostly from its base and a little from its tip, and its middle joint
+barely moves. Pose the thumb last on a fist.
+
+### HND52. A fist closes as a wave
+stages: passes
+
+A fist closes as a wave, little finger first, and opens in the opposite order. Use the same order for any open or
+close. Key the start and end poses on the same frames first. Pose the end shape base joints first, then the lower
+joints, then twist and spacing, with the thumb last. Then offset in time: the little finger about 2 frames early,
+the middle finger on the beat, the index about 2 frames late, the thumb about 3 after its first position. With
+fewer fingers, lead with the outer one. Add a recoil about 6 frames later, a small overshoot that softens, and
+flatten the end keys so the hand eases out. These counts are provisional and came from a slightly fast hand.
+
+### HND53. Finger follow-through stays small
+stages: passes, self_review
+
+Fingers are light and fairly stiff; too much follow-through looks like spaghetti. Put the follow-through in the
+wrist or the arm, and only a little in the fingers on a big broad move. Fingers button a pose: they drag and relax
+as the hand comes out of it, with the ring finger coming in and the little finger dragging behind with a small
+recoil. Never let the curves go dead; it matters more that the motion is felt than seen.
+
+### HND54. Pressure on a surface splays the outer fingers
+stages: blocking, passes
+
+Key the moment of touch, then splay the outer fingers a little and bend the tips up under the pressure. The middle
+finger splays least. Start from a grouped pose so the splay reads against it. A fingertip stays locked on the
+surface, and the bend happens between the knuckle and the tip: kick the knuckles out and squash the fingertip a
+little. Lift the hand and fingers so they do not sink into the surface.
+
+### HND55. A hand peels away and slides in
+stages: blocking, passes
+
+When a hand leaves a surface, peel it from the fingertips and relax it into the final pose. When it arrives, let
+the fingers slide in. Do not jump the whole hand from A to B, and do not stop it and then open it: it keeps moving
+as it opens.
+
+### HND56. A hand dragged over a surface drags as one hand
+stages: passes
+
+When the hand moves forward over a table, the lower hand and fingers trail behind as one connected hand, not as a
+single finger. Use the hand's translation as the speed reference and ease the fingers out over the first frames.
+Pose a dragged finger with its base lower and its tip up; when the drag ends it curls and relaxes. Flip the drag
+when the hand changes direction.
+
+### HND57. Switch a hand constraint on in one frame
+stages: rig, blocking, checks
+
+Do not key a constraint that blends in slowly: the computer then sets the timing and the hand sticks like a
+magnet. Pose the hand on the object exactly, set the constraint to match, and switch it on over one frame. Do not
+leave a constraint locked for a whole push. Move the grip points now and then, and relax the hand as the tension
+drops. With constrained hands, keep the arm solid and the elbow-to-wrist line clear.
+
+### HND58. Hands that talk avoid pantomime, and small habits give life
+stages: plan, self_review
+
+Avoid broad literal pantomime, such as showing a number with the fingers, unless the scene needs it. Do not
+gesture on every beat. Prefer subtle gestures that stress. Small thinking habits give life: a hand over the mouth,
+a look at the hand, tapping fingers in order, lacing or stretching them. A gesture that disagrees with the words
+reads as a joke or as insincerity. A personal way of holding something shows personality. The five common faults
+are default hands, curling all joints at once, magnetic constraints, too much finger follow-through and
+overacting.
+
+### HND59. Two hands that meet answer each other
+stages: blocking, passes
+
+When two hands meet, each reacts to the other: one thumb curls over the other, one index pushes the other. Work
+one hand, then the other. A one-frame intersection hides in motion blur and is allowed. Give both hands the same
+ease length at the start and the end. The final shape is loose, with thumbs over each other and fingertips
+touching, not clasped. A check: does the hand have more than two shapes in this action?
+
+### HND60. Add a settle after contact
+stages: passes
+
+Key a relax about 2 frames before the end pose, then move it after the final pose so it becomes an ease out. Hold
+a copy of the pose between the peak and the relax for 2 frames with flat tangents. Cuffs drag with the hand.
+Elbows stay solid on the table, then ease up slowly; ease them in and out so they do not pop. Widen the playback
+range a few frames past the end pose when you add a settle.
+
+### HND61. Polish fingers at an extreme and on a tentpole action
+stages: passes
+
+At an extreme, add breakdowns, offset the fingers, loosen them, add overlap and clear intersections. Hold a closed
+hand a little longer before it opens. Avoid a claw: straighten the fingers and bend at the root knuckles.
+Overshoot the finger spread and settle back so the hand explodes into the pose. A hand slapped on a thigh splays a
+little and settles in 2 frames. On a tentpole action such as a point, exaggerate: bend the finger beyond natural,
+snap it, straighten it on the next frame, and allow an overshoot. On a hand resting on furniture, bend the fingers
+so they do not pass through it and give the finger curve a small reversal to feel the weight pressed down. Do not
+fix an intersection that the final camera never sees.
+
+### HND62. Blend a hand on a surface from FK to IK over about 6 frames
+stages: rig, passes
+
+For a hand on a surface, blend from FK to IK over about 6 frames with an S-shaped blend, and key the IK activation
+before the switch. Keep the wrist rotating whenever the elbow moves. The hand glides lightly on its fingertips and
+stays keyed, not locked: control values change almost every frame. IK is easier than counter-animating the fingers
+while the body moves. Check that the arm does not hang in space.
+
+### HND63. Reach from the shoulder, not from the hand
+stages: blocking, passes, checks
+
+Lift the shoulder with the arm. An arm raised by IK alone on a still shoulder is weightless. A heavy character
+leads with the chest. Before contact, make the key reach a straight line from the fingertip to the shoulder, with
+a clean elbow arc and no IK pop, and check it by scrubbing in the shot camera. Exaggerate how far the elbow goes
+back so the extreme snaps.
+
+### HND64. Place the breakdown of an arm move near one end
+stages: blocking, passes, checks
+
+To slow out of the first pose or into the last, put the breakdown near one side of the move. In a 6-frame move the
+breakdown can sit 4 frames after the first pose and 2 before the last. Timing stays 6 frames and only the spacing
+changes. A straight line in the graph is even spacing; an arc favours one side. Lead with the shoulder or elbow,
+keep the arcs, lag the head a little, and check the silhouette so a foreshortened arm does not hide the action.
+Overlap needs no offset keys. The counts are provisional.
+
+### HND65. Leave a residual after a gesture ends
+stages: passes
+
+A dropped arm moves the body: a twist or a small contort, even a slow one, and the viewer feels it. Leave a
+residual after a gesture ends. When a gesture goes out of the frame, still move the shoulder; do not force the
+gesture into the camera. Gestures follow arcs, and the face opens with the hands.

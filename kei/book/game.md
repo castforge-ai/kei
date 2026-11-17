@@ -378,3 +378,16 @@ only characters the engine accepts. Store the files in a shallow tree that follo
 per skeleton, and under it one level per gameplay feature (movement, combat, traversal and so on). Keep experiments in
 a scratch area and retired clips in an archive area apart from live work instead of deleting them, and leave no unused
 clip in the engine. Each export carries the name of the scene it came from.
+
+### GAM43. In a fast-action game, cut the wind-up of a move the player triggers
+stages: plan, blocking
+
+This rule is for games whose actions answer the player at once, such as a melee swing or a jump in a fast action game.
+It is not a general animation rule: for film, television and cinematics, ANT1 stands. When a move starts on the
+player's input, drop its anticipation. The first frame after the input is the pose the action starts from, drawn back
+as far as the move needs. If the move feels slow, remove frames from its start before you speed up the clip, because a
+faster clip loses weight and believability and often still feels slow. Make that start pose a clearly new silhouette,
+so one frame shows the player that the input worked. Weight then comes from the follow-through, as in GAM2. Keep the
+anticipation when it is part of play: an enemy's telegraph (ANT24) or a charge the player times. Record in the plan
+which of the two the move is. Provisional: from one team's account of a swing that lost about 5 to 6 frames, roughly
+180 ms; check it by feel in the engine (GAM30).
