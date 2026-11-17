@@ -129,3 +129,23 @@ def test_the_bake_report_counts_bones_and_says_the_ik_copy_was_done_in_the_rig(t
         report = bake_shot(ed.client(), shot, "blocking")
     assert report["bones"] == 161 and report["skipped_bones"] == 185 and report["ik_copy"] == "skeleton pose"
     assert "161 bones written (185 helper bones of the rig are not in the skeleton)" in bake_lines(report)
+
+
+def test_a_second_performer_is_baked_after_the_character_for_reference_only_once_signed_off(tmp_path):
+    shot = done_shot(tmp_path)
+    p = shot / "out_blocking" / "shot.json"
+    d = json.loads(p.read_text())
+    d["performers"] = {"ghost": {"offset_cm": [120, 60, 0], "yaw_deg": -30}}
+    p.write_text(json.dumps(d))
+    ed = FakeEditor()
+    ed.baked = following
+    with ed.server():
+        report = bake_shot(ed.client(), shot, "blocking")
+    assert [b["performer"] for b in ed.bakes] == ["", "ghost"]
+    ghost = report["performers"]["ghost"]
+    assert ghost["asset"] == "/Game/Kei/walk_01/A_walk_01_blocking_ghost" and ghost["ok"]
+    assert ghost["offset_cm"] == [120.0, 60.0, 0.0] and ghost["yaw_deg"] == -30.0
+    assert "ghost, baked for reference: /Game/Kei/walk_01/A_walk_01_blocking_ghost" in bake_lines(report)
+    save_state(shot, ShotState(stage="deliver", status="needs_approval"))
+    with ed.server(), pytest.raises(Exception, match="approved shot"):
+        bake_shot(ed.client(), shot, "blocking")

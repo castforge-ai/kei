@@ -3,7 +3,8 @@
 # the project, not one per frame) and the whole batch is one undo transaction: the editor keeps what an undo step
 # touches in memory, so fewer steps keep less. The sequence has been open for an editor tick before the call.
 # Input: sequence and keys [{frame, tangent (step, linear, spline, flat), controls {control: {channel: value}}, types
-# {control: euler_transform | float | bool | rotator}}]. One frame may also be given flat: sequence, frame, tangent,
+# {control: euler_transform | float | bool | rotator}}], and performer ("" for the character, or the name of a
+# second performer in the sequence). One frame may also be given flat: sequence, frame, tangent,
 # controls, types. Values are in the rig's own units (cm, degrees).
 # A transform key writes all nine channels of the control, so the channels Kei does not name keep their value there.
 # Output: keyed (channel count), clipped (asked versus reached, when a limit held a value back), tangents.
@@ -15,14 +16,14 @@ class _NoTransaction:
         return False
 
 
-def _set_tangents(seq, frames, controls):
+def _set_tangents(seq, frames, controls, performer=""):
     """Each key of these controls at these frames gets its frame's tangent. Each channel's keys are read once: every
     key read makes a scripting object, and reading every channel once per key frame made millions of them a pass,
     enough to exhaust the editor's object limit. Returns "set", or "skipped: <why>"."""
     try:
         mode = {"step": unreal.RichCurveInterpMode.RCIM_CONSTANT, "linear": unreal.RichCurveInterpMode.RCIM_LINEAR,
                 "spline": unreal.RichCurveInterpMode.RCIM_CUBIC, "flat": unreal.RichCurveInterpMode.RCIM_CUBIC}
-        binding = seq.get_bindings()[0]
+        binding = binding_of(seq, performer)
         for track in binding.get_tracks():
             if track.get_class().get_name() != "MovieSceneControlRigParameterTrack":
                 continue
@@ -46,7 +47,7 @@ def _one(inp, own_transaction=True, tangents_now=True):
     seq = load_sequence(inp["sequence"])
     if not inp["sequence"].startswith(KEI_ROOT + "/"):
         raise RuntimeError("Kei keys only its own sequences under " + KEI_ROOT)
-    rig = control_rig_of(seq)
+    rig = control_rig_of(seq, inp.get("performer", ""))
     lib = unreal.ControlRigSequencerLibrary
     frame = unreal.FrameNumber(int(inp["frame"]))
     unit = unreal.MovieSceneTimeUnit.DISPLAY_RATE
@@ -88,7 +89,8 @@ def _one(inp, own_transaction=True, tangents_now=True):
                 lib.set_local_control_rig_rotator(seq, rig, ctrl, frame, unreal.Rotator(rot[0], rot[1], rot[2]), unit,
                                                   True)
             keyed += len(chans)
-    tangents = _set_tangents(seq, {int(inp["frame"]): inp["tangent"]}, set(inp["controls"])) if tangents_now else "set"
+    tangents = (_set_tangents(seq, {int(inp["frame"]): inp["tangent"]}, set(inp["controls"]), inp.get("performer", ""))
+                if tangents_now else "set")
     return {"keyed": keyed, "clipped": clipped, "tangents": tangents}
 
 
@@ -100,12 +102,13 @@ def _main(inp):
     with unreal.ScopedEditorTransaction("Kei keys"):         # one undo step for the whole batch
         for k in inp["keys"]:
             got = _one({"sequence": inp["sequence"], "frame": k["frame"], "tangent": k["tangent"],
-                        "controls": k["controls"], "types": k["types"]}, own_transaction=False, tangents_now=False)
+                        "controls": k["controls"], "types": k["types"], "performer": inp.get("performer", "")},
+                       own_transaction=False, tangents_now=False)
             keyed += got["keyed"]
             clipped += [dict(c, f=k["frame"]) for c in got["clipped"]]
         # the tangents of the whole batch in one read of each channel's keys
         tangents = _set_tangents(seq, {int(k["frame"]): k["tangent"] for k in inp["keys"]},
-                                 {c for k in inp["keys"] for c in k["controls"]})
+                                 {c for k in inp["keys"] for c in k["controls"]}, inp.get("performer", ""))
     unreal.SystemLibrary.collect_garbage()     # the key objects that read made are not kept until the next idle GC
     return {"keyed": keyed, "clipped": clipped, "tangents": tangents}
 

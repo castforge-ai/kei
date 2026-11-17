@@ -12,6 +12,9 @@ read_back(client, shot_dir, pass_name, character, mode) -> Path of out_<pass>/jo
   The fingers and toes come back in the same call (kei.apps.unreal_detail): their positions go in joints.json under
   "detail" on each frame (never in "joints", which the body checks read), and their curl and lift, with flags for a
   finger bent backward or toes pressed into the floor, go to out_<pass>/hands_toes.json.
+  A second performer (shot.json "performers") is read the same way and stands where the sequence puts it (its
+  offset and yaw from the character's place): its joints go on each frame under "performers" {name: joints}, which
+  the renders draw and the body checks do not read.
 """
 from __future__ import annotations
 
@@ -64,6 +67,14 @@ def joints_from_bones(bones_cm: dict, frame: Frame = MANNEQUIN) -> dict:
     return j
 
 
+def _placed(p_cm, offset_cm, yaw_deg):
+    """A performer's rig-space point where the sequence stands it: turned by its yaw, moved by its offset (cm)."""
+    a = math.radians(yaw_deg)
+    x, y, z = p_cm
+    return (x * math.cos(a) - y * math.sin(a) + offset_cm[0], x * math.sin(a) + y * math.cos(a) + offset_cm[1],
+            z + offset_cm[2])
+
+
 def pass_sequence(shot_dir: Path, pass_name: str) -> str:
     made = sequences(shot_dir).get(pass_name)
     if not made:
@@ -102,6 +113,17 @@ def read_back(client: Claireon, shot_dir: Path, pass_name: str, character: str, 
             row["detail"] = extra
             detail.append({"f": f, "bones": kei(bones)})
         frames.append(row)
+    from kei.apps.unreal_keys import performers_of
+    for name, perf in performers_of(shot).items():
+        other = run_script(client, "eval_rig.py", {"sequence": seq, "bones": list(BONES), "performer": name,
+                                                   "frames": list(range(last + 1))})
+        for row in frames:
+            bones = other["frames"].get(str(row["f"]))
+            if bones is None:
+                raise UnrealError(f"the editor returned no frame {row['f']} of {name}: run the shot again")
+            moved = {b: _placed(tuple(pt), perf["offset_cm"], perf["yaw_deg"]) for b, pt in bones.items()}
+            row.setdefault("performers", {})[name] = {n: [round(c, 6) for c in pt]
+                                                      for n, pt in joints_from_bones(moved, frame).items()}
     mode = mode or ("step" if pass_name == "blocking" else "spline")
     dst = out / "joints.json"
     dst.write_text(json.dumps({"source": "unreal", "fps": shot.get("fps") or 24, "mode": mode,

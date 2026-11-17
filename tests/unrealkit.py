@@ -59,6 +59,8 @@ class FakeEditor:
                            "pelvis_relative_cm": {"head": 0.0, "hand_l": 0.0, "foot_l": 1.8}}
         self.poses: list[dict] = []
         self.missing_channels: set[str] = set()
+        self.looks: list[dict] = []        # make_look calls
+        self.performer_bones = {}          # performer -> (frame -> {bone: [x, y, z]}) in rig space
 
     def handlers(self) -> dict:
         return {"probe": self.probe, "make_sequence": self.make_sequence, "read_rig": self.read_rig,
@@ -66,7 +68,16 @@ class FakeEditor:
                 "open_sequence": self.open_sequence, "eval_rig": self.eval_rig, "bake": self.bake,
                 "read_bake": self.read_bake, "organize": self.organize,
                 "unload_kei": self.unload_kei, "capture_frame": self.capture_frame,
-                "load_pose": self.load_pose, "layer_keys": self.layer_keys}
+                "load_pose": self.load_pose, "layer_keys": self.layer_keys, "make_look": self.make_look}
+
+    def make_look(self, inp):
+        """A performer's materials: one Kei instance per slot (three slots), under the shot's looks folder."""
+        self.looks.append(inp)
+        folder = inp["folder"] + "/looks/" + inp["performer"]
+        if not folder.startswith("/Game/Kei/"):
+            return {"error": "Kei writes only under /Game/Kei"}
+        paths = [f"{folder}/MI_Kei_{inp['performer']}_{i}_MI_Slot{i}" for i in range(3)]
+        return {"materials": paths, "set": {p: [s["name"] for s in inp["scalars"]] for p in paths}, "dirty": []}
 
     def server(self) -> FakeClaireon:
         self.fake = FakeClaireon(self.handlers())
@@ -101,9 +112,10 @@ class FakeEditor:
         if path in self.sequences:
             return {"error": "the asset " + path + " already exists: Kei never overwrites or deletes an asset"}
         self.sequences[path] = {"frames": inp["frames"], "fps": inp["fps"], "copy_from": inp.get("copy_from"),
-                                "keys": []}
+                                "keys": [], "performers": {p["name"]: p for p in inp.get("performers") or []}}
         self.made_open = path              # make_sequence.py opens the sequence it made
         return {"path": path, "fps": int(inp["fps"]), "frames": inp["frames"], "facing": "yaw -90", "dirty": [],
+                "performers": [p["name"] for p in inp.get("performers") or []],
                 "placed": {"how": "the floor under the Player Start", "at_cm": [370.0, -20.0, 0.0], "level": "/Game/ThirdPerson/ThirdPersonMap"}}
 
     def read_rig(self, inp):
@@ -124,8 +136,13 @@ class FakeEditor:
         self.batches.append(len(batch))
         keyed, clipped = 0, []
         for k in batch:
-            self.sequences[seq]["keys"].append({"f": k["frame"], "tangent": k["tangent"], "controls": k["controls"]})
-            self.keys.append({"sequence": seq, **{n: k[n] for n in ("frame", "tangent", "controls", "types")}})
+            who = inp.get("performer", "")
+            if who and who not in self.sequences[seq]["performers"]:
+                return {"error": "the sequence " + seq + " has no binding for the performer " + who}
+            self.sequences[seq]["keys"].append({"f": k["frame"], "tangent": k["tangent"], "controls": k["controls"],
+                                                **({"performer": who} if who else {})})
+            self.keys.append({"sequence": seq, "performer": who,
+                              **{n: k[n] for n in ("frame", "tangent", "controls", "types")}})
             self.dirty.add(seq)
             if self.user_dirty:
                 self.dirty.add(self.user_dirty)
@@ -141,7 +158,7 @@ class FakeEditor:
         """The layer of a pass: recorded on the sequence; missing_channels names channels the section lacks."""
         missing = [n for n in inp["channels"] if n in self.missing_channels]
         if not missing:
-            self.sequences[inp["sequence"]]["layer"] = inp["channels"]
+            self.sequences[inp["sequence"]]["layer" + ("/" + inp["performer"] if inp.get("performer") else "")] =                 inp["channels"]
             self.dirty.add(inp["sequence"])
         return {"keyed": 0 if missing else sum(len(v) for v in inp["channels"].values()),
                 "channels": len(inp["channels"]), "missing": missing, "collapsed": not missing, "sections": 1}
@@ -177,8 +194,9 @@ class FakeEditor:
         """The bones in rig space on each frame asked for. Like the editor, it refuses a sequence that is not open."""
         if self.opened != inp["sequence"]:
             return {"error": "the sequence " + inp["sequence"] + " is not the one open in Sequencer"}
-        rows = {str(f): {b: p for b, p in self.bones(f).items() if b in inp["bones"]} for f in inp["frames"]}
-        return {"frames": rows, "rest": {b: p for b, p in self.bones(0).items() if b in inp["bones"]},
+        bones = self.performer_bones.get(inp.get("performer") or "", self.bones)
+        rows = {str(f): {b: p for b, p in bones(f).items() if b in inp["bones"]} for f in inp["frames"]}
+        return {"frames": rows, "rest": {b: p for b, p in bones(0).items() if b in inp["bones"]},
                 "controls": 107, "skipped": {"FLOAT": 6}, "missing": []}
 
     def bake(self, inp):

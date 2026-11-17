@@ -36,6 +36,7 @@ MARGIN = 0.12        # the share of the panel left empty around the figure
 BORDER, TEXT = (205, 205, 205), (20, 20, 20)
 RIGHT, LEFT, CENTRE = (40, 40, 40), (30, 120, 220), (110, 110, 110)
 COM, GROUND = (220, 40, 40), (170, 150, 120)
+PERFORMER = (200, 120, 210)     # a second performer ("<name>/<joint>" in the joints), drawn lighter, in one colour
 
 SPINE = ("spine_01", "spine_02", "spine_03", "spine_04", "spine_05", "neck_01", "neck_02", "head", "head_top")
 SIDE_CHAINS = (("clavicle_{s}", "upperarm_{s}", "lowerarm_{s}", "hand_{s}", "hand_{s}_tip"),
@@ -297,10 +298,20 @@ def _ticks(view: str, axis: int, bounds: dict, size: int) -> list[float]:
 
 
 def draw_figure(cv: _Canvas, to_px, joints: dict) -> None:
-    """The figure: right side dark, left side in the left colour, the centre of mass as a dot."""
+    """The figure: right side dark, left side in the left colour, the centre of mass as a dot. A second performer's
+    joints ("ghost/pelvis" ...) are drawn first, behind it, in one lighter colour."""
+    for who in sorted({n.split("/", 1)[0] for n in joints if "/" in n}):
+        mine = {n.split("/", 1)[1]: p for n, p in joints.items() if n.startswith(who + "/")}
+        _draw_one(cv, to_px, mine, {"right": PERFORMER, "left": PERFORMER, "centre": PERFORMER, "com": None})
+    _draw_one(cv, to_px, {n: p for n, p in joints.items() if "/" not in n},
+              {"right": RIGHT, "left": LEFT, "centre": CENTRE, "com": COM})
+
+
+def _draw_one(cv: _Canvas, to_px, joints: dict, colours: dict) -> None:
     def seg(a, b, c):
         if a in joints and b in joints:
             cv.line(*to_px(joints[a]), *to_px(joints[b]), c)
+    RIGHT, LEFT, CENTRE, COM = colours["right"], colours["left"], colours["centre"], colours["com"]
     for s, c in (("r", RIGHT), ("l", LEFT)):
         for chain in SIDE_CHAINS:
             names = [n.format(s=s) for n in chain]
@@ -310,7 +321,7 @@ def draw_figure(cv: _Canvas, to_px, joints: dict) -> None:
         seg(a, b, RIGHT)
     for a, b in CENTRE_LINES:
         seg(a, b, CENTRE)
-    if "com" in joints:
+    if "com" in joints and COM is not None:
         cv.disk(*to_px(joints["com"]), 3, COM)
 
 

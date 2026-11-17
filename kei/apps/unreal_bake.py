@@ -10,6 +10,9 @@ bake_shot(client, shot_dir, pass_name) -> dict
   SequencerTools.export_anim_sequence fails for Kei's spawnable (UE 5.8.3), so bake.py bakes in the Control Rig and
   writes the tracks through the animation's controller; the ik_ copy is done on the skeleton's reference pose ("ik_copy": "skeleton pose"). The
   sequence must be open in Sequencer, so Kei opens it and waits one tick first.
+  A second performer of the shot (shot.json "performers") is baked the same way from its own Control Rig track, to
+  /Game/Kei/<shot>/A_<shot>_<pass>_<performer>, in its own rig space (where it stands is in the report), as a
+  reference for effects; it is checked like the character's and listed under "performers".
 """
 from __future__ import annotations
 
@@ -48,6 +51,37 @@ def delivery_end(shot: dict) -> int:
     return frames - 1 if shot.get("loop") and frames > 1 else frames
 
 
+def _bake(client: Claireon, seq: str, base: str, character: dict, end: int, shot: dict, performer: str) -> dict:
+    """bake.py to the first free name: base, base_2 ... base_8."""
+    for n in range(1, 9):
+        asset = base + ("" if n == 1 else f"_{n}")
+        try:
+            return run_script(client, "bake.py", {"sequence": seq, "asset": asset, "mesh": character["mesh"],
+                                                  "end": end, "fps": shot.get("fps") or 24, "performer": performer,
+                                                  "pairs": [list(p) for p in PAIRS]})
+        except UnrealError as e:
+            if "already exists" not in str(e):
+                raise
+    raise UnrealError(f"Kei could not find a free asset name for the bake {base}")
+
+
+def _checked(client: Claireon, done: dict, end: int) -> dict:
+    """Read a bake back and check every ik_ bone follows its bone on every frame."""
+    bones = sorted({b for p in PAIRS for b in p})
+    frames, missing = {}, set()
+    for start in range(0, end + 1, CHUNK):
+        got = run_script(client, "read_bake.py", {"asset": done["asset"], "bones": bones, "start": start,
+                                                  "end": min(end, start + CHUNK - 1)})
+        frames.update(got["frames"])
+        missing |= set(got.get("missing", []))
+    skipped = [list(p) for p in PAIRS if p[0] in missing or p[1] in missing]
+    failures = lags(frames, [p for p in PAIRS if list(p) not in skipped])
+    return {"asset": done["asset"], "frames": done.get("frames"), "ik_copy": done.get("ik_copy"),
+            "bones": done.get("bones"), "skipped_bones": done.get("skipped_bones"),
+            "ok": not failures and done.get("ik_copy") == IK_COPY, "failures": failures[:50],
+            "pairs_skipped": skipped}
+
+
 def bake_shot(client: Claireon, shot_dir: Path, pass_name: str) -> dict:
     shot_dir = Path(shot_dir)
     status = load_state(shot_dir).status
@@ -65,32 +99,17 @@ def bake_shot(client: Claireon, shot_dir: Path, pass_name: str) -> dict:
     before = run_script(client, "dirty.py", {})["dirty"]
     run_script(client, "open_sequence.py", {"sequence": seq})
     tick()
-    done = None
-    for n in range(1, 9):
-        asset = f"{folder}/A_{shot_name(shot_dir)}_{pass_name}" + ("" if n == 1 else f"_{n}")
-        try:
-            done = run_script(client, "bake.py", {"sequence": seq, "asset": asset, "mesh": character["mesh"],
-                                                  "end": end, "fps": shot.get("fps") or 24, "pairs": [list(p) for p in PAIRS]})
-            break
-        except UnrealError as e:
-            if "already exists" not in str(e):
-                raise
-    if done is None:
-        raise UnrealError(f"Kei could not find a free asset name for the bake of {pass_name} under {folder}")
+    done = _bake(client, seq, f"{folder}/A_{shot_name(shot_dir)}_{pass_name}", character, end, shot, "")
     check_dirty(before, done.get("dirty", []), folder)
-    bones = sorted({b for p in PAIRS for b in p})
-    frames, missing = {}, set()
-    for start in range(0, end + 1, CHUNK):
-        got = run_script(client, "read_bake.py", {"asset": done["asset"], "bones": bones, "start": start,
-                                                  "end": min(end, start + CHUNK - 1)})
-        frames.update(got["frames"])
-        missing |= set(got.get("missing", []))
-    skipped = [list(p) for p in PAIRS if p[0] in missing or p[1] in missing]
-    failures = lags(frames, [p for p in PAIRS if list(p) not in skipped])
-    report = {"asset": done["asset"], "frames": done.get("frames"), "range": [0, end], "ik_copy": done.get("ik_copy"),
-              "bones": done.get("bones"), "skipped_bones": done.get("skipped_bones"),
-              "ok": not failures and done.get("ik_copy") == IK_COPY, "failures": failures[:50],
-              "pairs_skipped": skipped, "claireon": client.info}
+    report = {**_checked(client, done, end), "range": [0, end], "claireon": client.info}
+    from kei.apps.unreal_keys import performers_of
+    others = {}
+    for name, perf in performers_of(shot).items():
+        got = _bake(client, seq, f"{folder}/A_{shot_name(shot_dir)}_{pass_name}_{name}", character, end, shot, name)
+        check_dirty(before, got.get("dirty", []), folder)
+        others[name] = {**_checked(client, got, end), "offset_cm": perf["offset_cm"], "yaw_deg": perf["yaw_deg"]}
+    if others:
+        report["performers"] = others
     out.mkdir(parents=True, exist_ok=True)
     (out / "bake_report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     return report
@@ -109,4 +128,7 @@ def bake_lines(report: dict) -> list[str]:
         lines.append(f"{f['bone']} does not follow {f['follows']} on frame {f['frame']} ({f['off_cm']} cm off)")
     lines.append("every ik_ bone follows its bone on every frame" if report["ok"] else
                  "the bake did not pass its check; the asset is kept in the project for you to inspect")
+    for name, r in (report.get("performers") or {}).items():
+        lines.append(f"{name}, baked for reference: {r['asset']}" + ("" if r["ok"] else
+                     " (its ik_ bones did not pass their check; kept for you to inspect)"))
     return lines

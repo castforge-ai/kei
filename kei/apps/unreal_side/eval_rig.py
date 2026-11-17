@@ -5,7 +5,7 @@
 # editor tick and no scrubbing. Afterwards every control gets its original local transform back.
 # The sequence must be the one open in Sequencer (open_sequence.py): the sequence getters return 0 for any other, so
 # this raises instead of returning a rest pose.
-# Input: sequence, frames [int], bones [name]. Output: frames {frame: {bone: [x, y, z]}}, rest {bone: [x, y, z]}
+# Input: sequence, frames [int], bones [name], performer ("" for the character, or a second performer's name). Output: frames {frame: {bone: [x, y, z]}}, rest {bone: [x, y, z]}
 # (the rig's own rest pose: every control at its initial value, whatever frame the editor shows), controls (count),
 # skipped (control types it did not set).
 def _main(inp):
@@ -14,7 +14,7 @@ def _main(inp):
     if current is None or current.get_path_name() != seq.get_path_name():
         raise RuntimeError("the sequence " + inp["sequence"] + " is not the one open in Sequencer: open it first")
     lib = unreal.ControlRigSequencerLibrary
-    rig = control_rig_of(seq)
+    rig = control_rig_of(seq, inp.get("performer", ""))
     h = rig.get_hierarchy()
     unit = unreal.MovieSceneTimeUnit.DISPLAY_RATE
     keys, skipped = [], {}

@@ -32,7 +32,7 @@ def _main(inp):
     last = int(unreal.AnimationLibrary.get_num_frames(anim))
     if frame < 0 or frame > last:
         raise RuntimeError("the animation " + inp["anim"] + " has frames 0 to " + str(last) + ", not " + str(frame))
-    binding = seq.get_bindings()[0]
+    binding = binding_of(seq)
     bound = unreal.LevelSequenceEditorBlueprintLibrary.get_bound_objects(seq.get_binding_id(binding))
     if not bound:
         raise RuntimeError("the character of " + inp["sequence"] + " is not spawned yet: wait one editor tick")

@@ -3,7 +3,8 @@
 render_pass(shot_dir, pass_name, size) -> dict
   The same files as a pass on Kei's own rig: out_<pass>/frames/f0000.png ..., a still per key (key_f0000.png), the key
   sheet (keys.png), the playback (<name>.mp4, or .gif without ffmpeg) and, for a loop, the ten loops (<name>_x10.mp4).
-  The pass records the renderer in out_<pass>/unreal_report.json under "views": "renderer": "kei".
+  The pass records the renderer in out_<pass>/unreal_report.json under "views": "renderer": "kei". A second performer
+  (joints.json "performers") is drawn in the same views, behind the character, in one lighter colour.
 Capture from the editor (Claireon frame capture of a camera Kei places) is NOT part of this version: the live spike
 did not prove it, so Kei never claims it. A request for it is refused in plain words and never falls back in silence.
 """
@@ -30,7 +31,9 @@ def render_pass(shot_dir: Path, pass_name: str, size: int = 360, renderer: str =
         raise ShotError(f"no {src}: key the pass in Unreal first (kei unreal key {shot_dir} {pass_name})")
     data = read_json(src, "joints")
     shot = read_json(out / "shot.json", "shot")
-    frames = [{"f": fr["f"], "joints": {n: tuple(p) for n, p in fr["joints"].items()}} for fr in data["frames"]]
+    frames = [{"f": fr["f"], "joints": {**{n: tuple(p) for n, p in fr["joints"].items()},
+                                        **{f"{who}/{n}": tuple(p) for who, js in (fr.get("performers") or {}).items()
+                                           for n, p in js.items()}}} for fr in data["frames"]]
     if not frames:
         raise ShotError(f"{src} has no frames")
     bounds = R.fit([fr["joints"] for fr in frames])

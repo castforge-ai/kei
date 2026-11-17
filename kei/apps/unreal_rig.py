@@ -7,7 +7,7 @@ read_rig(client, shot_dir, character) -> dict
   (within 1e-4): a control that is not back stops the shot with needs_human, naming it. Writes rig/unreal_rig.json
   (what the animator keys from, in the units it states) and rig/unreal_rig.md (the same in words, for the Rig line of
   CHARACTER.md: the seat writes that file, Kei does not edit it).
-new_sequence(client, shot_dir, pass_name, character, fps, frames, copy_from) -> the new sequence's asset path
+new_sequence(client, shot_dir, pass_name, character, fps, frames, copy_from, performers) -> the new sequence's path
   One new asset per attempt, LS_<shot>_<pass>_<n> under /Game/Kei/<shot>/, recorded in unreal/sequences.json. Kei never
   deletes and recreates a loaded asset: a name taken gets the next number.
 check_dirty(before, after, folder) -> raises NeedsHuman for a package that became dirty outside Kei's folder.
@@ -89,7 +89,7 @@ def load_character(shot_dir: Path) -> dict | None:
 
 
 def new_sequence(client: Claireon, shot_dir: Path, pass_name: str, character: dict, fps: float, frames: int,
-                 copy_from: str | None = None) -> str:
+                 copy_from: str | None = None, performers: list | None = None) -> str:
     book = sequences(shot_dir)
     made = book.get(pass_name, [])
     n = len(made) + 1
@@ -98,7 +98,8 @@ def new_sequence(client: Claireon, shot_dir: Path, pass_name: str, character: di
         try:
             out = run_script(client, "make_sequence.py", {
                 "folder": kei_folder(shot_dir), "name": name, "fps": fps, "frames": int(frames),
-                "mesh": character["mesh"], "control_rig": character["control_rig"], "copy_from": copy_from or ""})
+                "mesh": character["mesh"], "control_rig": character["control_rig"], "copy_from": copy_from or "",
+                "performers": performers or []})
         except UnrealError as e:
             if "already exists" in str(e):
                 n += 1

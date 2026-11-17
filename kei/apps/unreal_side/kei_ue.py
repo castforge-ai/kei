@@ -52,9 +52,27 @@ def load_sequence(path):
     return seq
 
 
-def control_rig_of(seq):
-    """The Control Rig instance on the first binding of Kei's sequence."""
+PERFORMER = "Kei performer: "   # the display name of a second performer's binding starts with this
+
+
+def binding_of(seq, performer=""):
+    """The binding of the shot's character (performer ""), or of the named second performer ("Kei performer: <name>")."""
+    for b in seq.get_bindings():
+        name = str(b.get_display_name())
+        if (name == PERFORMER + performer) if performer else not name.startswith(PERFORMER):
+            return b
+    raise RuntimeError("the sequence " + seq.get_path_name() + " has no binding for "
+                       + ("the performer " + performer if performer else "the character"))
+
+
+def control_rig_of(seq, performer=""):
+    """The Control Rig instance on the binding of the character, or of the named second performer."""
     rigs = unreal.ControlRigSequencerLibrary.get_control_rigs(seq)
     if not rigs:
         raise RuntimeError("the sequence " + seq.get_path_name() + " has no Control Rig track")
-    return rigs[0].control_rig
+    tracks = {t.get_path_name() for t in binding_of(seq, performer).get_tracks()}
+    for r in rigs:
+        if r.track is not None and r.track.get_path_name() in tracks:
+            return r.control_rig
+    raise RuntimeError("the sequence " + seq.get_path_name() + " has no Control Rig track on "
+                       + ("the performer " + performer if performer else "the character"))

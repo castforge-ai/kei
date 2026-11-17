@@ -13,7 +13,7 @@ import math
 def _character(seq):
     lib = unreal.LevelSequenceEditorBlueprintLibrary
     try:
-        bid = unreal.MovieSceneSequenceExtensions.get_binding_id(seq, seq.get_bindings()[0])
+        bid = unreal.MovieSceneSequenceExtensions.get_binding_id(seq, binding_of(seq))
         objs = [o for o in lib.get_bound_objects(bid) if o is not None]
         if objs:
             return objs[0], "the sequence's bound object"

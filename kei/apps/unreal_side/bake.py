@@ -8,7 +8,8 @@
 # new AnimSequence through its controller, for the bones the mesh's skeleton has, and saves that one asset by path.
 # The sequence must be the one open in Sequencer (open_sequence.py). Every control gets its original value back.
 # A name that exists is an error (Kei never deletes and recreates an asset).
-# Input: sequence, asset, mesh, end (last frame of the delivery range), fps, pairs [[bone, ik_bone]].
+# Input: sequence, asset, mesh, end (last frame of the delivery range), fps, pairs [[bone, ik_bone]], performer ("" for
+# the character, or the name of a second performer, baked from its own Control Rig track, in its own rig space).
 # Output: asset, frames, ik_copy ("rig"), bones (written), skipped_bones (count the skeleton lacks).
 def _main(inp):
     asset = inp["asset"]
@@ -24,7 +25,7 @@ def _main(inp):
     if mesh is None:
         raise RuntimeError("the mesh " + inp["mesh"] + " is not in the project")
     lib = unreal.ControlRigSequencerLibrary
-    rig = control_rig_of(seq)
+    rig = control_rig_of(seq, inp.get("performer", ""))
     h = rig.get_hierarchy()
     unit = unreal.MovieSceneTimeUnit.DISPLAY_RATE
     keys = []

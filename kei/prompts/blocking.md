@@ -63,6 +63,18 @@ that name a control and a channel of the character's Control Rig, read from rig/
 shot.json, run `kei unreal key <shot> <pass>`. It keys the controls in Kei's own sequence in the open editor and
 writes out_<pass>/joints.json from Unreal for the checks (do not run `kei bake` on an Unreal shot). A locked or
 unknown channel is refused by name; a pose a limit held back is listed in out_<pass>/unreal_report.json.
+A second performer of the same character (a ghost, a double, an echo the author asks for) goes in the same
+shot.json. Name it under "performers": {"ghost": {"offset_cm": [x, y, z], "yaw_deg": d, "look": [...]}}, where
+offset_cm is where it stands from the character's place (centimetres, Unreal axes), yaw_deg turns it, and look lists
+the scalar material parameters that give it its look, each {"name", "value", "association" (global, layer or blend),
+"layer" (the layer function's asset path, for a layer or blend parameter)}. Its keys carry its name as a prefix,
+`"ghost/body_ctrl.location.x": 4.0`, on the same rig's controls; the character's keys keep no prefix. Kei makes its
+materials under /Game/Kei/<shot>/looks/<name>/ as children of the character's own (which it never changes), keys it on
+its own Control Rig track in the same sequence, and reads it back under "performers" in out_<pass>/joints.json. The
+renders draw it in a lighter colour behind the character. Only the character is checked and delivered: the performer
+is part of the staging. Once the author signs the shot off, the bake makes the performer's own animation too, as a
+reference for effects. Act the two together: where each one looks, who leads and who answers, and the
+performer's own timing.
 The fingers and toes come back too: out_<pass>/hands_toes.json gives each finger joint's curl (positive closes it
 toward the palm, negative bends it backward) and each toe's lift against the foot, per frame, with flags for a finger
 bent backward and for toes bent down (a flick in the air, or digging into the floor). Read it before you ask the

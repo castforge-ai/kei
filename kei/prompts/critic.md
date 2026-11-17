@@ -41,6 +41,11 @@ never send the work back only because that viewing is missing. Instead:
   "Frame 13-18: the left hand's arc looks off". The frames first, then the body part and what to look at, in 12
   words or fewer. No rule ID, no file name, no critic name: Kei asks again for a check written any other way.
 
+When the shot has a second performer (shot.json "performers", drawn in a lighter colour), judge the scene, not
+the character alone: each one looks where the plan says, the performer's timing reads as its own and not as a copy,
+and it never pulls the eye from the character's key moments unless the plan says it should. The checks measure only
+the character, so the performer's motion is yours to judge from the renders.
+
 End your answer with ONE line of JSON and nothing after it:
 {"verdict": "pass" | "send_back", "notes": ["<frame range>: <what is wrong and what to change>", ...]}
 Three keys are optional on that line: "questions": [{"text": "<what to ask the author>", "look_at": "<file>"}],

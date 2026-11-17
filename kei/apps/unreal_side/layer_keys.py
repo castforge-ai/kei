@@ -4,13 +4,14 @@
 # Control Rig track over the whole range; each named channel gets its delta keyed on each listed frame (cubic, as
 # Kei's spline keys); then collapse_control_rig_anim_layers bakes the layers into one section, without key reduction.
 # The whole call is one undo transaction.
-# Input: sequence, frames (the last frame), channels {section channel name: [[frame, delta], ...]}.
+# Input: sequence, frames (the last frame), channels {section channel name: [[frame, delta], ...]}, performer ("" for
+# the character, or the name of a second performer).
 # Output: keyed (key count), channels (count), missing (channel names the section does not have), collapsed, sections.
 def _main(inp):
     if not inp["sequence"].startswith(KEI_ROOT + "/"):
         raise RuntimeError("Kei layers only its own sequences under " + KEI_ROOT)
     seq = load_sequence(inp["sequence"])
-    tracks = [t for t in seq.get_bindings()[0].get_tracks()
+    tracks = [t for t in binding_of(seq, inp.get("performer", "")).get_tracks()
               if t.get_class().get_name() == "MovieSceneControlRigParameterTrack"]
     if not tracks:
         raise RuntimeError("the sequence " + inp["sequence"] + " has no Control Rig track")
