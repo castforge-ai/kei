@@ -509,8 +509,8 @@ def check_pass(shot_dir: Path, pass_name: str, character: str, mode: str | None 
     shot = read_json(src, "shot")
     maya = out / "joints.json"
     frames = None
-    if maya.is_file() and read_json(maya, "joints").get("source") in ("maya", "unreal"):
-        data = read_json(maya, "joints")     # the joints Maya or Unreal gave back: measured as they play there
+    if maya.is_file() and read_json(maya, "joints").get("source") in ("maya", "unreal", "blender"):
+        data = read_json(maya, "joints")     # the joints Maya, Unreal or Blender gave back: measured as they play there
         frames = [{"f": fr["f"], "joints": {n: tuple(p) for n, p in fr["joints"].items()}} for fr in data["frames"]]
         mode = data.get("mode") or mode
     else:

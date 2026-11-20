@@ -66,6 +66,13 @@ def checks(config_path: Path) -> list[tuple[str, str, str, str]]:
             rows.append((OK, "mayapy", f"{path} ({how})", ""))
         except Exception as e:   # noqa: BLE001
             rows.append((FAIL, "mayapy", str(e), "install Maya, or set apps.maya.mayapy in kei.toml"))
+    if getattr(config, "app", "kei") == "blender":
+        try:
+            from kei.apps.blender import find_blender
+            path, how = find_blender(getattr(config, "blender", None))
+            rows.append((OK, "blender", f"{path} ({how})", ""))
+        except Exception as e:   # noqa: BLE001
+            rows.append((FAIL, "blender", str(e), "install Blender, or set apps.blender.path in kei.toml"))
     return rows
 
 

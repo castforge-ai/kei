@@ -157,7 +157,7 @@ def test_config_reads_the_unreal_keys_and_refuses_bad_ones(tmp_path):
         with pytest.raises(ConfigError, match=key):
             load_config_text(base + bad, tmp_path / "k.toml")
     with pytest.raises(ConfigError, match="apps.app"):
-        load_config_text(base.replace('"unreal"', '"blender"'), tmp_path / "k.toml")
+        load_config_text(base.replace('"unreal"', '"houdini"'), tmp_path / "k.toml")
 
 
 def test_the_settings_table_lists_the_unreal_keys_and_reads_a_three_level_key(tmp_path):

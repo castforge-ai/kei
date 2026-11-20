@@ -1,0 +1,18 @@
+name: An idea for Kei
+description: A command, a check, a rule for the book, or an app Kei should work in.
+labels: ["idea"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you were trying to do
+      description: The shot or the task, and where Kei got in the way or fell short.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: For a rule, say where it comes from (your own test, your experience, or a published source cited precisely), in your own words.
+    validations:
+      required: true

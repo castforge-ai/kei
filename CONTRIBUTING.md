@@ -5,7 +5,9 @@ submit your original contribution under this repository's MIT licence.
 
 Certify each contribution under the Developer Certificate of Origin 1.1 (below) by adding a `Signed-off-by:` line with
 your name and an address you are entitled to publish. The sign-off and your contribution history are public. Kei's
-own lesson sharing does not sign off for you: add the line yourself when you agree to the certificate.
+own lesson sharing does not sign off for you: add the line yourself when you agree to the certificate. `git commit -s`
+adds it; a pull request's checks name each commit without one (`tools/check_dco.py`), and `git rebase --signoff
+<base>` adds it to commits already made.
 
 Before you submit a lesson, code, artwork, animation or example, confirm that:
 

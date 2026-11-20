@@ -98,6 +98,12 @@ out_<pass>/joints.json from Maya for the checks (do not run `kei bake` on a Maya
 then makes Maya previews of each view in out_<pass>/maya_views/. A locked channel is refused by name; a pose a limit
 held back is listed in out_<pass>/maya_report.json.
 
+A shot in Blender (the shot folder has blender/) keeps the same shot.json, with Kei's channels. After writing it, run
+`kei blender key <shot> <pass>`: it keys the pass's key poses in Blender (the legs on IK), saves out_<pass>/scene.blend
+and writes out_<pass>/joints.json from Blender for the checks (do not run `kei bake` on a Blender shot). Between keys
+Blender plays its own interpolation: when the checks flag an in-between Kei's own rig would not, add a breakdown key
+there. `kei render <shot> <pass>` makes Blender previews of each view in out_<pass>/blender_render/.
+
 A shot in Unreal (the shot folder has unreal/target.json) keeps the same shot.json, with `"rig": "unreal"` and keys
 that name a control and a channel of the character's Control Rig, read from rig/unreal_rig.json, such as
 `"foot_l_ik_ctrl.location.z": 8.0` (centimetres and degrees, Z up). You never talk to Unreal: after writing

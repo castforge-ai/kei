@@ -1,0 +1,42 @@
+name: Something went wrong
+description: A kei command failed, stopped a shot, or did something you did not expect.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: ran
+    attributes:
+      label: What you ran
+      description: The kei command, or the stage the shot stopped at (kei status <shot> says which).
+      placeholder: kei run shots/crate --request "a man lifts a heavy crate"
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened, and what you expected
+      description: Paste the output. Kei prints the reason it stopped and what to do; that line helps most.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: Paste the output of `kei --version` and `kei doctor`.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: app
+    attributes:
+      label: Where the keys live
+      options: ["Kei's own rig", "Maya", "Unreal Engine", "Blender"]
+    validations:
+      required: true
+  - type: checkboxes
+    id: material
+    attributes:
+      label: What you attach
+      options:
+        - label: Nothing I attach is confidential, a client's or my employer's restricted material, or someone else's personal information.
+          required: true

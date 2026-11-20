@@ -1,8 +1,9 @@
 """Write an export scene (kei.export_scene) as binary glTF 2.0 (.glb), by hand with struct and json.
 
 The file holds the skeleton (the scene's bones: Unreal mannequin names and hierarchy), the bind pose (the rest pose),
-one mesh with a primitive per material (body, joint, emission), every vertex skinned rigidly to its mesh's one bone
-(weight 1), and the scene's animation when it has one: per joint a rotation and a translation per frame.
+one mesh with a primitive per material (body, joint, emission), every vertex skinned to its mesh's bones, each shot
+object as its own unskinned mesh under its own node, and one animation per clip: per joint a rotation and a
+translation per frame, per object the same. With no character mesh (build_scene mesh=False) the skin stays, unused.
 
 Axes: glTF's own. y is up, the model faces +z, its right is -x, units are metres. Kei's world has x on the
 character's right, so every point goes through to_gltf, x -> -x (D = diag(-1, 1, 1)); a joint's glTF rotation is
@@ -102,11 +103,18 @@ def gltf_from_scene(scene: ExportScene) -> tuple[dict, bytes]:
         if kids:
             node["children"] = kids
         nodes.append(node)
-    mesh_node = len(nodes)
-    nodes.append({"name": scene.title, "mesh": 0, "skin": 0})
-    doc["nodes"] = nodes
     roots = [index[b.name] for b in scene.bones if b.parent is None]
-    doc["scenes"] = [{"name": scene.title, "nodes": roots + [mesh_node]}]
+    top = list(roots)
+    if scene.meshes:
+        top.append(len(nodes))
+        nodes.append({"name": scene.title, "mesh": 0, "skin": 0})
+    object_node = {}
+    for o in scene.objects:
+        object_node[o.name] = len(nodes)
+        top.append(len(nodes))
+        nodes.append({"name": o.name, "translation": list(to_gltf(o.translation)), "rotation": _reflect(o.rotation)})
+    doc["nodes"] = nodes
+    doc["scenes"] = [{"name": scene.title, "nodes": top}]
     ibm = []                      # the inverse of each joint's rest transform, column-major
     for b in scene.bones:
         R, T = _global(b)
@@ -146,9 +154,27 @@ def gltf_from_scene(scene: ExportScene) -> tuple[dict, bytes]:
                                      "WEIGHTS_0": out.add("f", 5126, "VEC4", weights, ARRAY_BUFFER)},
                       "indices": out.add("I", 5125, "SCALAR", idx, ELEMENT_ARRAY_BUFFER),
                       "material": len(doc["materials"]) - 1, "mode": 4})
-    doc["meshes"] = [{"name": scene.title, "primitives": prims}]
-    a = scene.animation
-    if a is not None:
+    doc["meshes"] = [{"name": scene.title, "primitives": prims}] if prims else []
+    for o in scene.objects:                 # an object: its own unskinned mesh and material, under its own node
+        if not o.vertices:
+            continue
+        mat = mats[o.material]
+        doc["materials"].append({"name": o.material, "pbrMetallicRoughness": {
+            "baseColorFactor": _linear(mat.colour) + [1.0], "metallicFactor": 0.0, "roughnessFactor": 0.8}})
+        prim = {"attributes": {"POSITION": out.add("f", 5126, "VEC3", [to_gltf(v) for v in o.vertices],
+                                                   ARRAY_BUFFER, bounds=True),
+                               "NORMAL": out.add("f", 5126, "VEC3", [to_gltf(n) for n in o.normals], ARRAY_BUFFER)},
+                "indices": out.add("I", 5125, "SCALAR", [(a,) for t in o.triangles for a in (t[0], t[2], t[1])],
+                                   ELEMENT_ARRAY_BUFFER),
+                "material": len(doc["materials"]) - 1, "mode": 4}
+        nodes[object_node[o.name]]["mesh"] = len(doc["meshes"])
+        doc["meshes"].append({"name": o.name, "primitives": [prim]})
+    if not doc["meshes"]:
+        del doc["meshes"]
+    if not doc["materials"]:
+        del doc["materials"]
+    anims = []
+    for a in scene.clips():
         times = out.add("f", 5126, "SCALAR", [(k / a.fps,) for k in range(len(a.rotations))], bounds=True)
         samplers, channels = [], []
         for i, b in enumerate(scene.bones):
@@ -164,14 +190,29 @@ def gltf_from_scene(scene: ExportScene) -> tuple[dict, bytes]:
             for path, rows, kind in tracks:
                 samplers.append({"input": times, "output": out.add("f", 5126, kind, rows), "interpolation": "LINEAR"})
                 channels.append({"sampler": len(samplers) - 1, "target": {"node": i, "path": path}})
-        doc["animations"] = [{"name": "shot", "samplers": samplers, "channels": channels}]
+        for name, rows in a.objects.items():
+            rots, prev = [], None
+            for _, q in rows:
+                q = _reflect(q)
+                if prev is not None and sum(x * y for x, y in zip(prev, q)) < 0:
+                    q = [-c for c in q]
+                rots.append(tuple(q))
+                prev = q
+            tracks = (("translation", [to_gltf(t) for t, _ in rows], "VEC3"), ("rotation", rots, "VEC4"))
+            for path, vals, kind in tracks:
+                samplers.append({"input": times, "output": out.add("f", 5126, kind, vals), "interpolation": "LINEAR"})
+                channels.append({"sampler": len(samplers) - 1, "target": {"node": object_node[name], "path": path}})
+        anims.append({"name": a.name, "samplers": samplers, "channels": channels})
+    if anims:
+        doc["animations"] = anims
     doc["buffers"] = [{"byteLength": len(out.data)}]
     return doc, bytes(out.data)
 
 
-def build_gltf(ch: Character, emission: float = 1.0, shot: dict | None = None, mode: str = "spline"):
+def build_gltf(ch: Character, emission: float = 1.0, shot: dict | None = None,
+        mode: str = "spline", **scene):
     """The glTF document and binary chunk of a character: build_scene, then gltf_from_scene."""
-    return gltf_from_scene(build_scene(ch, emission, shot, mode))
+    return gltf_from_scene(build_scene(ch, emission, shot, mode, **scene))
 
 
 def pack_glb(doc: dict, binary: bytes) -> bytes:
@@ -184,15 +225,17 @@ def pack_glb(doc: dict, binary: bytes) -> bytes:
             + struct.pack("<II", len(binary), BIN_CHUNK) + binary)
 
 
-def build_glb(ch: Character, emission: float = 1.0, shot: dict | None = None, mode: str = "spline") -> bytes:
+def build_glb(ch: Character, emission: float = 1.0, shot: dict | None = None,
+        mode: str = "spline", **scene) -> bytes:
     """The .glb bytes of a character, optionally animated by a shot."""
-    return pack_glb(*build_gltf(ch, emission, shot, mode))
+    return pack_glb(*build_gltf(ch, emission, shot, mode, **scene))
 
 
-def export_glb(ch: Character, path, emission: float = 1.0, shot: dict | None = None, mode: str = "spline") -> Path:
+def export_glb(ch: Character, path, emission: float = 1.0, shot: dict | None = None,
+               mode: str = "spline", **scene) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(build_glb(ch, emission, shot, mode))
+    path.write_bytes(build_glb(ch, emission, shot, mode, **scene))
     return path
 
 

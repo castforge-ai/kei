@@ -102,6 +102,11 @@ app = "kei"
 session = "ask"       # ask | open | background
 # mayapy = "C:/Program Files/Autodesk/Maya2027/bin/mayapy.exe"   # default: KEI_MAYAPY, else the newest Maya found
 
+# Blender ("blender"; also kei run --app blender): Kei keys its character's key poses in a background Blender (no
+# window), legs on IK, and reads the joints Blender plays back for every check.
+# [apps.blender]
+# path = "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe"   # default: KEI_BLENDER, else the newest found
+
 # Unreal ("unreal"; also kei run --app unreal): Kei keys your character's Control Rig in your open Unreal Editor,
 # through the Claireon plugin (kei unreal setup lists the steps). Kei asks which open editor to use unless
 # session = "open" and exactly one answers. Kei talks to 127.0.0.1 only.

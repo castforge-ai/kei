@@ -5,12 +5,18 @@ from outside. character_mesh(ch) is every shape's mesh, one Part each; pose_mesh
 with its bone. widths(ch) measures the shoulders and the hips at rest.
 
 An imported character (kei import) has bound parts instead of shapes: a rigid part moves with its one bone as a shape
-does; a smooth part has a skin, and each of its vertices moves to the weighted sum of where each of its bones would
-carry it (linear blend skinning), its normal likewise, then normalised. Imported parts carry shape -1.
+does; a smooth part has a skin, and each of its vertices moves with the weighted blend of its bones' moves as one rigid
+is placed by linear blend skinning (the weighted sum of where each of its bones would carry it), as Maya, Unreal and
+the game engines play a skin by default, so Kei's previews show what ships. KEI_SKINNING=dual_quaternion places it
+with the blend of its bones' moves as one rigid motion instead, which keeps a twisting limb's volume where linear
+blending collapses it to a candy wrap: on kei_model, an upper arm twisted 1.5 rad keeps its skin ring at its rest
+radius (median 8.7 cm, rest 8.6) where linear blending shrinks it to 7.5. Kei's FBX then declares dual quaternion
+skinning and a Blender shot preserves volume, so the tools that can play it do. Imported parts carry shape -1.
 """
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 from kei.characters import Character, Shape, rest_pose
@@ -325,8 +331,82 @@ def character_mesh(ch: Character) -> list[Part]:
     return ch._mesh
 
 
-def _skinned(p: Part, B) -> Part:
+def _quat(m) -> tuple:
+    """The unit quaternion (w, x, y, z) of a rotation matrix (rows)."""
+    tr = m[0][0] + m[1][1] + m[2][2]
+    if tr > 0:
+        s = math.sqrt(tr + 1.0) * 2
+        q = (0.25 * s, (m[2][1] - m[1][2]) / s, (m[0][2] - m[2][0]) / s, (m[1][0] - m[0][1]) / s)
+    elif m[0][0] > m[1][1] and m[0][0] > m[2][2]:
+        s = math.sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]) * 2
+        q = ((m[2][1] - m[1][2]) / s, 0.25 * s, (m[0][1] + m[1][0]) / s, (m[0][2] + m[2][0]) / s)
+    elif m[1][1] > m[2][2]:
+        s = math.sqrt(1.0 + m[1][1] - m[0][0] - m[2][2]) * 2
+        q = ((m[0][2] - m[2][0]) / s, (m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s)
+    else:
+        s = math.sqrt(1.0 + m[2][2] - m[0][0] - m[1][1]) * 2
+        q = ((m[1][0] - m[0][1]) / s, (m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s)
+    n = math.sqrt(sum(c * c for c in q))
+    return tuple(c / n for c in q)
+
+
+def _qmul(a, b) -> tuple:
+    return (a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+            a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+            a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+            a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0])
+
+
+def bone_dq(rest, pose) -> tuple:
+    """The move of a bone from rest to pose as a dual quaternion (real, dual): a point x at rest goes to R x + t, with
+    R = F_pose F_rest^T (the frames as column matrices) and t = head_pose - R head_rest."""
+    Fp, Fr = pose.frame, rest.frame
+    R = [[sum(Fp[a][r] * Fr[a][c] for a in range(3)) for c in range(3)] for r in range(3)]
+    t = [pose.head[r] - sum(R[r][c] * rest.head[c] for c in range(3)) for r in range(3)]
+    q = _quat(R)
+    d = _qmul((0.0, t[0], t[1], t[2]), q)
+    return q, tuple(0.5 * c for c in d)
+
+
+def dq_point(blend, v) -> tuple[Vec, list]:
+    """A point moved by a blended (not yet normalised) dual quaternion, and the rotation matrix it applies."""
+    q, d = blend
+    n = math.sqrt(sum(c * c for c in q)) or 1.0
+    w, x, y, z = (c / n for c in q)
+    dw, dx, dy, dz = (c / n for c in d)
+    R = [[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+         [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+         [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]]
+    t = (2 * (-dw * x + dx * w - dy * z + dz * y), 2 * (-dw * y + dx * z + dy * w - dz * x),
+         2 * (-dw * z - dx * y + dy * x + dz * w))
+    return tuple(sum(R[r][c] * v[c] for c in range(3)) + t[r] for r in range(3)), R
+
+
+def _skinned(p: Part, B, rest=None) -> Part:
+    """A smooth part in a pose. With the rest bones, dual quaternion skinning: each vertex turns with the blend of
+    its bones' moves as one rigid motion, so a forearm that twists keeps its volume where linear blending collapses
+    it to a candy wrap. Without them, linear blend skinning."""
     verts, normals = [], []
+    if rest is not None:
+        moves = {}
+        for vw, v0, n0 in zip(p.skin, p.verts, p.normals):
+            first, q, d = None, [0.0] * 4, [0.0] * 4
+            for bone, w, _, _ in vw:
+                if bone not in moves:
+                    moves[bone] = bone_dq(rest[bone], B[bone])
+                bq, bd = moves[bone]
+                if first is None:
+                    first = bq
+                s = w if sum(a * b for a, b in zip(first, bq)) >= 0 else -w      # the short way round
+                for k in range(4):
+                    q[k] += s * bq[k]
+                    d[k] += s * bd[k]
+            v, R = dq_point((q, d), v0)
+            n = [sum(R[r][c] * n0[c] for c in range(3)) for r in range(3)]
+            length = math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]) or 1.0
+            verts.append(v)
+            normals.append((n[0] / length, n[1] / length, n[2] / length))
+        return Part(p.bone, p.material, verts, normals, p.tris, p.shape, p.skin, p.uvs, p.texture)
     for vw in p.skin:
         v, n = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]
         for bone, w, lv, ln in vw:
@@ -341,13 +421,34 @@ def _skinned(p: Part, B) -> Part:
     return Part(p.bone, p.material, verts, normals, p.tris, p.shape, p.skin, p.uvs, p.texture)
 
 
+SKINNINGS = ("linear", "dual_quaternion")
+
+
+def skinning_from(env) -> str:
+    """KEI_SKINNING from an environment: linear (the default) or dual_quaternion. Raises ValueError on anything else."""
+    value = env.get("KEI_SKINNING", "linear")
+    if value not in SKINNINGS:
+        raise ValueError(f"KEI_SKINNING={value!r}: linear or dual_quaternion")
+    return value
+
+
+SKINNING = skinning_from(os.environ)      # how Kei's renders and mesh checks place a smooth part
+
+
+def rest_bones(ch: Character) -> dict:
+    """The character's rest skeleton, kept on the character after the first call."""
+    if getattr(ch, "_rest_bones", None) is None:
+        ch._rest_bones = skeleton(rest_pose(ch), ch.proportions)
+    return ch._rest_bones
+
+
 def pose_mesh(ch: Character, pose: dict, bones=None) -> list[Part]:
     """The parts placed by a pose: every vertex moved rigidly with its bone (normals turned with it)."""
     B = bones or skeleton(pose, ch.proportions)
     out = []
     for p in character_mesh(ch):
         if p.skin is not None:
-            out.append(_skinned(p, B))
+            out.append(_skinned(p, B, rest_bones(ch) if SKINNING == "dual_quaternion" else None))
             continue
         b = B[p.bone]
         (X, Y, Z), h = b.frame, b.head

@@ -1,0 +1,38 @@
+name: An engine or tool import
+description: You brought a Kei export into Godot, Unity, Blender, Unreal or another tool. It worked or it did not; both help.
+labels: ["engines"]
+body:
+  - type: input
+    id: tool
+    attributes:
+      label: The tool and its version
+      placeholder: Godot 4.4, Unity 6000.1, Blender 5.2, Unreal Engine 5.8
+    validations:
+      required: true
+  - type: input
+    id: export
+    attributes:
+      label: The export command
+      description: With every option you used (--format, --clip, --names, --skeleton-only).
+      placeholder: kei export shots/walk --clip shots/run --format fbx
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: The import settings you used
+      description: Scale, axis, unit and rig settings, as docs/engines.md lists them for your tool.
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Did it work?
+      options: ["Yes: right size, facing, clips and objects", "Partly", "No"]
+    validations:
+      required: true
+  - type: textarea
+    id: wrong
+    attributes:
+      label: What was wrong, if anything
+      description: The size, the facing, a clip, a bone name, an object. A screenshot helps.

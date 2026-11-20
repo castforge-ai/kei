@@ -14,7 +14,7 @@ from kei.characters import DEFAULT as DEFAULT_CHARACTER
 SHARE_MODES = ("ask", "always", "never", "auto")
 SHARE_REPO = "castforge-ai/kei"     # where shared lessons go unless share.repo names another GitHub repository
 _REPO = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?!\.\.?$)[A-Za-z0-9._-]{1,100}")
-APPS = ("kei", "maya", "unreal")
+APPS = ("kei", "maya", "unreal", "blender")
 MAYA_SESSIONS = ("ask", "open", "background")
 UNREAL_SESSIONS = ("ask", "open")
 
@@ -57,6 +57,7 @@ class Config:
     app: str = "kei"                     # where the keys live: Kei's own rig, or Maya
     maya_session: str = "ask"            # a Maya shot with Maya open: ask, the open session, or the background
     mayapy: str | None = None            # Maya's Python, when Kei should not look for it
+    blender: str | None = None           # Blender's executable, when Kei should not look for it
     unreal_url: str | None = None        # the Claireon server of the open Unreal Editor (127.0.0.1 only)
     unreal_project: str | None = None    # the Unreal project folder, where Claireon writes its port
     unreal_session: str = "ask"          # an Unreal shot: ask, or the one open editor when exactly one answers
@@ -252,6 +253,12 @@ def load_config_text(text: str, path: Path) -> Config:
     mayapy = maya_t.get("mayapy")
     if mayapy is not None and (not isinstance(mayapy, str) or not mayapy):
         raise ConfigError("apps.maya.mayapy must be a path")
+    blender_t = apps_t.get("blender", {})
+    if not isinstance(blender_t, dict):
+        raise ConfigError("apps.blender must be a table")
+    blender = blender_t.get("path")
+    if blender is not None and (not isinstance(blender, str) or not blender):
+        raise ConfigError("apps.blender.path must be a path")
     unreal_t = apps_t.get("unreal", {})
     if not isinstance(unreal_t, dict):
         raise ConfigError("apps.unreal must be a table")
@@ -296,7 +303,7 @@ def load_config_text(text: str, path: Path) -> Config:
                   max_send_backs=max_send_backs, on_send_back_limit=on_limit, auto_retries=auto_retries,
                   retry_note=retry_note.strip(), share=share, share_repo=share_repo, share_sign_off=share_sign_off, book=book, lessons=lessons,
                   max_rule_chars=max_rule_chars, character=character.strip().lower(), app=app,
-                  maya_session=session, mayapy=mayapy, unreal_url=u_url, unreal_project=unreal_text["project"],
+                  maya_session=session, mayapy=mayapy, blender=blender, unreal_url=u_url, unreal_project=unreal_text["project"],
                   unreal_session=u_session, unreal_mesh=unreal_text["mesh"],
                   unreal_control_rig=unreal_text["control_rig"], live_page=live["page"], live_open=live["open"],
                   banned_names=banned_names, refs_library=refs_library, web=web, web_asked="web" in seats_t,

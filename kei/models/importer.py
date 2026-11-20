@@ -200,6 +200,8 @@ def _import(model: Model, path, name: str, height, maps, unrigged: bool) -> tupl
             f"{len(bare)} finger bone(s) move no skin: {', '.join(bare)}. Those fingers stay rigid in every shot; "
             "look at the hands on fit.png before you approve the fit")
     source = {"file": str(path), "skeleton": report["skeleton"], "height": round(height, 4)}
+    if rigged:                       # Kei's bone -> the model's own name, for kei export --names source
+        source["bones"] = {ours: theirs for theirs, ours in mapping.items()}
     sources = []                     # one texture per base colour image, in the order the parts name them
     for p in parts:
         if p.uvs and p.texture and p.texture not in sources:

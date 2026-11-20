@@ -10,6 +10,25 @@ from pathlib import Path
 from typing import Callable
 
 from kei.apps import maya_stage, unreal_stage
+from kei.apps.blender_shot import is_blender_shot, scene_path as blender_scene
+
+
+def blender_stage_needed(shot_dir: Path, config) -> bool:
+    """A Blender shot (kei.toml [apps] app = "blender", or a blender/ folder) with no scene yet."""
+    return (config.app == "blender" or is_blender_shot(shot_dir)) and not blender_scene(shot_dir).is_file()
+
+
+def _blender_setup(shot_dir: Path, config) -> str | None:
+    """Make the shot's Blender scene; the reason when Blender cannot (the shot pauses, never goes on in silence)."""
+    from kei.apps.blender import BlenderError
+    from kei.apps.blender_shot import setup_shot
+    from kei.characters import CharacterError, shot_character
+    try:
+        setup_shot(shot_dir, character=shot_character(shot_dir, None, config.character),
+                   blender=Path(config.blender) if getattr(config, "blender", None) else None)
+    except (BlenderError, CharacterError, OSError) as e:
+        return str(e)
+    return None
 from kei.apps.maya_feedback import target_misses
 from kei.runlock import run_lock
 from kei.book import BookError, Rule, Topic, lessons_for_shot, load_rules, load_topics
@@ -526,6 +545,11 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
                                                   "text": need["question"], "choices": need["choices"]}])
         if need:
             return _pause(shot_dir, state, entry, SeatPaused("machine", "maya", need["pause"]))
+    if blender_stage_needed(shot_dir, config):       # a Blender shot: its scene, made once, before the stages
+        entry = {"stage": state.stage, "attempt": state.attempts + 1, "at": _now(), "misses": []}
+        why = _blender_setup(shot_dir, config)
+        if why:
+            return _pause(shot_dir, state, entry, SeatPaused("machine", "blender", why))
     if unreal_stage.wants_unreal(shot_dir, config.app):   # where to animate (always asked), then the character's rig
         need = unreal_stage.prepare(shot_dir, config)
         entry = {"stage": state.stage, "attempt": state.attempts + 1, "at": _now(), "misses": []}

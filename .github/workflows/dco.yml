@@ -1,0 +1,20 @@
+name: dco
+# Every commit of a pull request carries a Signed-off-by line: the contributor certifies it under the Developer
+# Certificate of Origin 1.1 in CONTRIBUTING.md. Merge commits are skipped. Sign off with `git commit -s`; to add the
+# line to commits already made, `git rebase --signoff <base>` and push again.
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  sign-off:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Signed-off-by on every commit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/check_dco.py "$BASE" "$HEAD"

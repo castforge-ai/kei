@@ -1,7 +1,7 @@
 name: lessons
 # A pull request that adds a shared lesson gets the same bundle checks the review page runs, before a maintainer
-# opens it: only the five files, every hash, both cases playable, 2 MB at most. It also checks each commit carries a
-# Signed-off-by line (the Developer Certificate of Origin in CONTRIBUTING.md).
+# opens it: only the five files, every hash, both cases playable, 2 MB at most. The Signed-off-by line of every commit
+# (the Developer Certificate of Origin in CONTRIBUTING.md) is checked on every pull request by dco.yml.
 on:
   pull_request:
     paths: ["lessons/incoming/**"]
@@ -18,16 +18,3 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync --python 3.12
       - run: uv run kei share check lessons/incoming --allow-none
-      - name: Signed-off-by on every commit
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          missing=0
-          for c in $(git rev-list "$BASE..$HEAD"); do
-            if ! git log -1 --format=%B "$c" | grep -q '^Signed-off-by: '; then
-              echo "commit $c has no Signed-off-by line (see CONTRIBUTING.md, or set share.sign_off = on)"
-              missing=1
-            fi
-          done
-          exit $missing

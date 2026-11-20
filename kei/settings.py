@@ -102,15 +102,18 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("book.max_chars", "int", 450000, "the most rule text one stage may get; over it, the shot stops"),
     Setting("shot.character", "choice", "kei", "who Kei animates when the brief names nobody",
             "A built-in character (kei, keira) or one you imported with kei import (see kei characters)."),
-    Setting("apps.app", "choice", "kei", "where the keys live: Kei's own rig, Maya or Unreal",
+    Setting("apps.app", "choice", "kei", "where the keys live: Kei's own rig, Maya, Unreal or Blender",
             "kei: Kei keys its own rig. maya: Kei keys the control rig in Maya (also kei run --app maya). unreal: "
-            "Kei keys the control rig in your open Unreal Editor, through Claireon (also kei run --app unreal).",
+            "Kei keys the control rig in your open Unreal Editor, through Claireon (also kei run --app unreal). "
+            "blender: Kei keys its character in a background Blender (also kei run --app blender).",
             APP_CHOICES),
     Setting("apps.maya.session", "choice", "ask", "with Maya open, where a Maya shot animates",
             "ask: Kei asks each time; open: the open Maya, through the Kei host; background: Maya with no "
             "window, on a copy in the shot folder.", MAYA_SESSION_CHOICES),
     Setting("apps.maya.mayapy", "path", None, "Maya's Python, when Kei should not look for it",
             "Leave it unset: Kei uses KEI_MAYAPY, else the newest Maya it finds."),
+    Setting("apps.blender.path", "path", None, "Blender's executable, when Kei should not look for it",
+            "Leave it unset: Kei uses KEI_BLENDER, else the newest Blender it finds."),
     Setting("apps.unreal.session", "choice", "ask", "with Unreal open, where an Unreal shot animates",
             "ask: Kei asks each time, listing every open editor; open: the one open editor, when exactly one "
             "answers.", UNREAL_SESSION_CHOICES),

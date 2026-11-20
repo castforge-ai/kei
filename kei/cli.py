@@ -142,6 +142,8 @@ def _cmd_run(a) -> int:
         record_source(shot, Path(a.scene) if a.scene else None)
     if a.app == "unreal":
         (shot / "unreal").mkdir(parents=True, exist_ok=True)     # the mark of an Unreal shot: the conductor asks where
+    if a.app == "blender":
+        (shot / "blender").mkdir(parents=True, exist_ok=True)    # the mark of a Blender shot: set up before the stages
     _live_page(shot, config)
     answers = None
     if getattr(a, "answers", None):
@@ -953,6 +955,9 @@ def _cmd_render(a) -> int:
         return _render_rest(a)
     if maya_shot.is_maya_shot(Path(a.shot)):
         return _render_maya(a)
+    from kei.apps import blender_shot
+    if blender_shot.is_blender_shot(Path(a.shot)):
+        return _render_blender(a)
     from kei.apps import unreal_stage
     if unreal_stage.is_unreal_shot(Path(a.shot)):
         return _render_unreal(a)
@@ -1037,6 +1042,47 @@ def _render_maya(a) -> int:
         print(f"the views side by side: {r['side_by_side']}")
     if r["loops"]:
         print(f"ten loops at the shot's frame rate: {r['loops']}")
+    return EXIT_DONE
+
+
+def _blender_path(a) -> Path | None:
+    """kei.toml [apps.blender] path, when the config names one (else Kei looks for Blender itself)."""
+    try:
+        given = load_config(_config_path(getattr(a, "config", None))).blender
+    except Exception:   # noqa: BLE001 (no config here: Kei looks for Blender)
+        return None
+    return Path(given) if given else None
+
+
+def _render_blender(a) -> int:
+    from kei.apps import blender_shot
+    if a.camera != "fixed":
+        raise ShotError("a Blender shot renders through its four fixed cameras (front, three quarter, side, back); "
+                        f"--camera {a.camera} is for Kei's own renderer")
+    r = blender_shot.render_pass(Path(a.shot), a.pass_name, blender=_blender_path(a))
+    for view, p in r["views"].items():
+        print(f"playback ({view}): {p}")
+    return EXIT_DONE
+
+
+def _cmd_blender_setup(a) -> int:
+    from kei.apps import blender_shot
+    r = blender_shot.setup_shot(Path(a.shot), character=a.character, fps=a.fps, blender=_blender_path(a))
+    print(f"Blender {r['blender']}: {blender_shot.scene_path(Path(a.shot))} ({r['character']}, legs on IK; knee at "
+          f"rest within {max(p['knee_error_m'] for p in r['poles'].values()) * 1000:.2f} mm of Kei's)")
+    print(f"the rig: {Path(a.shot) / 'rig' / 'blender_rig.json'}")
+    return EXIT_DONE
+
+
+def _cmd_blender_key(a) -> int:
+    from kei.apps import blender_shot
+    r = blender_shot.key_pass(Path(a.shot), a.pass_name, a.mode, blender=_blender_path(a))
+    out = Path(a.shot) / f"out_{a.pass_name}"
+    print(f"{r['keys']} key poses in Blender {r['blender']}, interpolation {r['interpolation']}: {out / 'scene.blend'}")
+    print(f"joints for the checks: {out / 'joints.json'}")
+    if r["not_played"]:
+        print(f"not played in Blender (Kei's length scales): {', '.join(r['not_played'])}; the joints show the pass "
+              "without them")
     return EXIT_DONE
 
 
@@ -1311,6 +1357,10 @@ def _cmd_export(a) -> int:
     if a.shot_arg and a.shot and Path(a.shot_arg) != Path(a.shot):
         raise ShotError("give the shot once: kei export <shot>, or --shot <shot>")
     a.shot = a.shot or a.shot_arg
+    elsewhere = a.to == "unreal" or (a.shot and maya_shot.is_maya_shot(Path(a.shot)))
+    if elsewhere and (a.clip or a.skeleton_only or a.names):
+        raise ShotError("--clip, --names and --skeleton-only are for Kei's own glTF and FBX files, not an Unreal bake "
+                        "or a Maya shot's FBX")
     if a.to == "unreal":
         return _export_unreal(a)
     if a.shot and maya_shot.is_maya_shot(Path(a.shot)):
@@ -1329,7 +1379,24 @@ def _cmd_export(a) -> int:
         check_shot(shot)
     elif not a.character:
         raise ShotError("kei export needs a shot (kei export <shot>) or --character for the rest pose")
+    if a.clip and not a.shot:
+        raise ShotError("--clip adds clips to a shot's file: kei export <shot> --clip <other shot>[@<pass>]")
     ch = load_character(_character_of(a, shot) if a.shot else a.character)
+    clips = []
+    if shot is not None:
+        clips.append((f"{Path(a.shot).resolve().name}_{a.pass_name}", shot, mode))
+        for spec in a.clip or ():
+            clips.append(_extra_clip(a, spec, ch.name))
+    from kei.export_scene import ExportError, source_names
+    names = a.names or "source"
+    try:
+        renamed = source_names(ch) if names == "source" else {}
+    except ExportError as e:
+        if a.names:
+            raise ShotError(str(e)) from None
+        print(f"note: {e}; the file keeps Kei's bone names")
+        names, renamed = "kei", {}
+    scene_args = {"clips": clips, "names": names, "mesh": not a.skeleton_only}
     suffix = Path(a.out).suffix.lower() if a.out else ""
     fmt = a.format or ("fbx" if suffix == ".fbx" else "gltf")
     if fmt == "both" and a.out:
@@ -1347,9 +1414,38 @@ def _cmd_export(a) -> int:
         else:
             dst = (Path(a.out_dir) if a.out_dir else Path(".")) / f"{ch.name}.{ext}"
         write = export_fbx if f == "fbx" else export_glb
-        path = write(ch, dst, a.emission, shot, mode or "spline")
-        print(f"{ch.title}: {path}" + (f" (pass {a.pass_name}, animated, mode {mode})" if shot else " (rest pose)"))
+        path = write(ch, dst, a.emission, **scene_args)
+        what = (f"{len(clips)} clips: {', '.join(n for n, *_ in clips)}" if len(clips) > 1
+                else f"pass {a.pass_name}, animated, mode {mode}" if shot else "rest pose")
+        extra = (", skeleton and animation only" if a.skeleton_only else "") + \
+                (f", the model's own bone names ({len(renamed)} renamed)" if renamed else "")
+        print(f"{ch.title}: {path} ({what}{extra})")
     return EXIT_DONE
+
+
+def _extra_clip(a, spec: str, character: str) -> tuple:
+    """One more clip for kei export --clip: '<shot>' (its approved or newest pass) or '<shot>@<pass>', on the same
+    character. A delivered shot is read where its files are packed (kei.layout.where)."""
+    from kei import layout
+    shot_dir, _, pass_name = spec.partition("@")
+    shot_dir = Path(shot_dir)
+    if not shot_dir.is_dir():
+        raise ShotError(f"--clip {spec}: {shot_dir} is not a shot folder")
+    if not pass_name:
+        if layout.is_packed(shot_dir):
+            pass_name = json.loads((shot_dir / ".kei" / "layout.json").read_text(encoding="utf-8")).get("final_pass")
+        pass_name = pass_name or _final_pass(shot_dir)
+    src = layout.where(shot_dir, f"out_{pass_name}/shot.json")
+    if not src.is_file():
+        raise ShotError(f"--clip {spec}: no out_{pass_name}/shot.json in {shot_dir}")
+    clip = read_json(src, "shot")
+    check_shot(clip)
+    other = argparse.Namespace(**{**vars(a), "shot": str(shot_dir)})
+    if _character_of(other, clip) != character:
+        raise ShotError(f"--clip {spec}: that shot is on {_character_of(other, clip)}, this file is {character}; "
+                        "one file holds one character's clips")
+    mode = a.mode or ("step" if pass_name == "blocking" else "spline")
+    return f"{shot_dir.resolve().name}_{pass_name}", clip, mode
 
 
 def _final_pass(shot: Path) -> str:
@@ -1475,6 +1571,10 @@ def _cmd_bake(a) -> int:
     if unreal_stage.is_unreal_shot(Path(a.shot)):
         raise ShotError(f"{a.shot} is an Unreal shot: kei unreal key {a.shot} {a.pass_name} keys it in Unreal and "
                         "writes the joints Unreal gives back; kei bake would replace them with Kei's own rig")
+    from kei.apps import blender_shot
+    if blender_shot.is_blender_shot(Path(a.shot)):
+        raise ShotError(f"{a.shot} is a Blender shot: kei blender key {a.shot} {a.pass_name} keys it in Blender and "
+                        "writes the joints Blender plays; kei bake would replace them with Kei's own rig")
     if maya_shot.is_maya_shot(Path(a.shot)):
         raise ShotError(f"{a.shot} is a Maya shot: kei maya key {a.shot} {a.pass_name} keys it in Maya and writes "
                         "the joints Maya gives back; kei bake would replace them with Kei's own rig")
@@ -1664,7 +1764,7 @@ COMMAND_GROUPS = (
     ("set up", ("init", "doctor", "skill", "settings", "characters", "demo")),
     ("run a shot", ("run", "status", "live", "review", "answer", "retry", "bench", "vary")),
     ("sign off", ("approve", "note", "fixed", "park", "drop", "pack", "share")),
-    ("characters, apps and files", ("import", "export", "refit-pass", "maya", "unreal", "shots", "sound", "ref")),
+    ("characters, apps and files", ("import", "export", "refit-pass", "maya", "unreal", "blender", "shots", "sound", "ref")),
     ("tools the agents use (you rarely need them)", ("render", "bake", "check", "poses", "probe", "keys", "try",
                                                      "sweep", "curves", "pose", "trails", "sheet", "rule", "schema")),
 )
@@ -1682,7 +1782,7 @@ SUMMARIES = {   # one line each for kei --help; a command's own --help has the w
     "approve": "sign off a delivered shot", "note": "send a shot back with a note",
     "fixed": "close open notes as fixed after a new pass", "park": "leave a shot out of the open list for now",
     "drop": "drop a shot", "pack": "one file to send a reviewer, notes come back", "share": "check, zip or list shared lessons", "schema": "the JSON Schema of a Kei file", "import": "make a character from your own model", "export": "write a shot or a character "
-    "as glTF or FBX", "refit-pass": "play a pass on a character's new proportions (was retarget)", "maya": "animate in Maya",
+    "as glTF or FBX", "refit-pass": "play a pass on a character's new proportions (was retarget)", "maya": "animate in Maya", "blender": "animate in Blender",
     "unreal": "animate in your open Unreal Editor", "shots": "look after a folder of shots",
     "render": "draw a pass: frames, key sheet, playback", "bake": "write the joints of every frame",
     "check": "measure a pass: contacts, balance, arcs, principles", "poses": "write the record of each key pose",
@@ -1725,7 +1825,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("shot")
     r.add_argument("--request", help="what to animate, in plain words (needed for a new shot only)")
     r.add_argument("--config", help="kei.toml (default: ./kei.toml, else kei.example.toml)")
-    r.add_argument("--app", choices=("kei", "maya", "unreal"), help="where the keys live (default: kei.toml [apps] app)")
+    r.add_argument("--app", choices=("kei", "maya", "unreal", "blender"), help="where the keys live (default: kei.toml [apps] app)")
     r.add_argument("--scene", help="with --app maya: your Maya scene, copied into the shot (never written)")
     r.add_argument("--wait-on-limit", action="store_true",
                    help="on a usage limit, wait until it resets (the time the CLI gives, else 30 min) and run on")
@@ -2020,6 +2120,14 @@ def main(argv: list[str] | None = None) -> int:
     ex.add_argument("--shot", help="a shot folder: bake out_<pass>/shot.json into an animation")
     ex.add_argument("--pass", dest="pass_name", help="the pass to bake (default: the newest pass, else blocking)")
     ex.add_argument("--mode", choices=MODES, help="default: step for blocking, spline after")
+    ex.add_argument("--clip", action="append", metavar="SHOT[@PASS]",
+                    help="one more shot's pass as another clip in the same file (repeat it; default pass: the "
+                         "approved one, else the newest); every clip must be on the same character")
+    ex.add_argument("--names", choices=("source", "kei"),
+                    help="the bone names in the file: source (default), an imported model's own names where it kept "
+                         "its skeleton, else Kei's; kei, the Unreal mannequin names always")
+    ex.add_argument("--skeleton-only", action="store_true",
+                    help="the skeleton and the animation only, no character mesh (objects keep their tracks)")
     ex.set_defaults(fn=_cmd_export)
     im = sub.add_parser("import", help="make a character from an outside humanoid model (.glb, .gltf, binary .fbx), "
                                        "rigged or not; it waits for you to approve its fit sheet")
@@ -2078,6 +2186,20 @@ def main(argv: list[str] | None = None) -> int:
     ini.set_defaults(fn=_cmd_init)
     cs = sub.add_parser("characters", help="list the characters a shot can use, built in and imported")
     cs.set_defaults(fn=_cmd_characters)
+    bl = sub.add_parser("blender", help="animate in Blender: set a shot up, key a pass, render it there")
+    bsub = bl.add_subparsers(dest="blender_command", required=True)
+    bs = bsub.add_parser("setup", help="the shot's Blender scene: Kei's character from its glTF, legs on IK")
+    bs.add_argument("shot")
+    bs.add_argument("--character", help=", ".join(CHARACTERS) + ", or one made with kei import (default: the shot's "
+                                        "Character line in PLAN.md, else kei)")
+    bs.add_argument("--fps", type=float, default=24)
+    bs.set_defaults(fn=_cmd_blender_setup)
+    bk = bsub.add_parser("key", help="key out_<pass>/shot.json in Blender, save the pass's .blend and read the joints "
+                                     "back for the checks")
+    bk.add_argument("shot")
+    bk.add_argument("pass_name", metavar="pass", help="blocking, p1, p2, ...")
+    bk.add_argument("--mode", choices=MODES, help="default: step for blocking, spline after")
+    bk.set_defaults(fn=_cmd_blender_key)
     my = sub.add_parser("maya", help="animate in Maya: set a shot up, key a pass on the controls")
     msub = my.add_subparsers(dest="maya_command", required=True)
     ms = msub.add_parser("setup", help="the shot's Maya scene: Kei's character with its control rig, or a copy of "

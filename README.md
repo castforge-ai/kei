@@ -429,6 +429,10 @@ kei import my_hero.fbx --name hero --height 1.80
   `kei import --confirm --name hero`, or answer the question a shot on it asks.
 - `kei characters` lists the characters a shot can use. Imported ones live in `~/.kei/characters` (or the folder
   `KEI_CHARACTERS` names), outside this repository.
+- **Skin at a twist.** Kei plays a smooth skin by linear blending, as Maya, Unreal and the game engines do by default,
+  so its previews show what ships. A twisting upper arm or forearm then thins (the candy wrap). Set
+  `KEI_SKINNING=dual_quaternion` to keep the volume: Kei's renders blend with dual quaternions, its FBX declares that
+  skinning, and a Blender shot preserves volume. Engines that blend linearly still thin the twist.
   Models on four legs, with wings or with many legs wait for the general rig.
 
 ## Character folders
@@ -575,7 +579,10 @@ Kei's output is animation, not an app. It animates on its own rig and exports a 
 Unreal mannequin bone names, that game engines and 3D apps can import: `kei export <shot>` writes the shot's approved
 pass (else its newest) on the shot's character to `<shot>/<shot>_<pass>.glb`, at the top of the shot folder;
 `--format fbx` or `--format both` for FBX, `--pass` and `--character` to choose, `--out` or `--out-dir` to write
-elsewhere. `kei export --character kei` writes the rest pose.
+elsewhere. `kei export --character kei` writes the rest pose. The shot's objects come along as their own meshes;
+`--clip <other shot>[@<pass>]` puts several clips in one file, `--skeleton-only` leaves the character mesh out, and an
+imported character that kept its own skeleton exports with that model's bone names (`--names kei` for the mannequin's).
+The import settings for Blender, Godot, Unity and Unreal are in [docs/engines.md](docs/engines.md).
 
 Kei can also work live inside an app, keying your character's own rig there: Unreal Engine 5 and Autodesk Maya.
 Other apps can be added the same way.
@@ -669,6 +676,26 @@ Kei sends the keys of a pass to the editor in batches of 15 frames, one undo ste
 After each pass Kei also asks the editor to give its memory back: it closes the sequence, unloads the shot's saved Kei sequences (an unsaved one stays), clears the undo history and collects garbage, and `unreal/memory.json` gets a row "after releasing memory" so you can see what it freed (`KEI_UNREAL_CLEANUP=0` turns it off).
 
 `kei unreal capture-test <shot> <pass>` is a test, not yet part of the review: it has the editor draw one frame of a keyed pass from the front, the side and the three quarter view (the real mesh, with a temporary camera and light that are deleted afterwards) into `out_<pass>/mesh_test/`, and says in words whether the pictures look drawn. Open them and check that they show your character.
+
+### Blender
+
+Kei animates in Blender too, on the same twelve stages and the same checks, in a background Blender (no window):
+`kei run <shot> --app blender`, or `[apps] app = "blender"` in kei.toml. Blender 5.2 is tested; Kei finds the newest
+install, or takes `KEI_BLENDER` or `[apps.blender] path`.
+
+- `kei blender setup <shot> --character kei` makes `blender/scene.blend`: Kei's character from its own glTF (Kei's
+  bone names, the skinned mesh) with the legs on IK (a foot control and a knee pole per leg). The run does this by
+  itself before the first stage.
+- `kei blender key <shot> <pass>` keys the pass's key poses on that rig, with the interpolation of the pass (blocking
+  holds each pose, the later passes ease), saves `out_<pass>/scene.blend` for you to open and work on, and writes
+  `out_<pass>/joints.json` from what Blender plays. Every check measures those joints, so an in-between Blender plays
+  differently from Kei's own rig is a flag, not a surprise later. A travelling loop is keyed one stride on at its last
+  frame, so it plays forward.
+- `kei render <shot> <pass>` renders the pass in Blender from the front, three quarter, side and back into
+  `out_<pass>/blender_render/`.
+
+Not built yet in Blender: Kei's length scales (squash, stretch; a pass that uses them is keyed without them and the
+key report names them), arm IK (the arms are keyed in FK), and keying a rig of your own in your own .blend.
 
 ### Maya
 
