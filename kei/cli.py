@@ -1243,6 +1243,19 @@ def _cmd_unreal_capture_test(a) -> int:
     return EXIT_DONE if r["looks_drawn"] else EXIT_ERROR
 
 
+def _cmd_unreal_switch(a) -> int:
+    from kei.apps import unreal_stage
+    r = unreal_stage.switch_limb(Path(a.shot), a.pass_name, a.limb, a.to, a.frame)
+    if not r["written"]:
+        print(f"nothing written: {r['why']}")
+        return EXIT_ERROR
+    print(f"{r['limb']} switches to {r['to'].upper()} at f{r['frame']}, matched within {r['gap_cm']:.2f} cm in the "
+          f"editor; keyed in out_{a.pass_name}/shot.json: the switch on f{r['frame'] - 1} and f{r['frame']}, and "
+          + ", ".join(r["controls"]))
+    print(f"key it with: kei unreal key {a.shot} {a.pass_name}")
+    return EXIT_DONE
+
+
 def _cmd_unreal_key(a) -> int:
     from kei.apps import unreal_stage
     r = unreal_stage.key_pass(Path(a.shot), a.pass_name, load_config(_config_path(a.config)))
@@ -2119,6 +2132,14 @@ def main(argv: list[str] | None = None) -> int:
     uk.add_argument("pass_name", metavar="pass", help="blocking, p1, p2, ...")
     uk.add_argument("--config", help="kei.toml (default: ./kei.toml, else kei.example.toml)")
     uk.set_defaults(fn=_cmd_unreal_key)
+    usw = usub.add_parser("switch", help="a matched IK/FK switch of one limb at a frame, measured in the open editor: "
+                                          "the frame before keeps the old mode, the frame keys the new one on the same pose")
+    usw.add_argument("shot")
+    usw.add_argument("pass_name", metavar="pass", help="p1, p2, ... (keyed in Unreal already)")
+    usw.add_argument("--limb", required=True, choices=("arm_l", "arm_r", "leg_l", "leg_r"))
+    usw.add_argument("--to", required=True, choices=("ik", "fk"))
+    usw.add_argument("--frame", required=True, type=int)
+    usw.set_defaults(fn=_cmd_unreal_switch)
     uc = usub.add_parser("capture-test", help="a test: have the editor draw one frame of a keyed pass from the front, "
                                              "the side and the three quarter view (the real mesh), into out_<pass>/mesh_test/")
     uc.add_argument("shot")

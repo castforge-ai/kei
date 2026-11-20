@@ -158,7 +158,7 @@ def read_rig(client: Claireon, shot_dir: Path, character: dict, fps: float = 24,
         raise NeedsHuman(f"the rig probe left the control {bad[0]} changed ({len(bad)} in all): in the editor, "
                          f"undo or reload the sequence {seq} without saving, then run the shot again")
     check_dirty(dirty_before, got.get("dirty", []), folder)
-    controls = [{k: c[k] for k in ("name", "type", "channels", "locked", "limited", "moves") if k in c}
+    controls = [{k: c[k] for k in ("name", "type", "channels", "locked", "limited", "moves", "switch") if k in c}
                 for c in got.get("controls", [])]
     if not controls:
         raise NeedsHuman(f"the Control Rig {character['control_rig']} has no keyable controls: pick another "

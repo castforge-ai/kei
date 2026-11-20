@@ -224,7 +224,11 @@ Kei does the repeatable work around the poses, so the agent does not write it ag
   armL --value ik` switches with no snap: the frame before holds the old mode, and frame 40 keys the new mode fitted
   to the same pose (within 2 mm; it refuses when no pose of the new mode gets there). It works both ways, for armL,
   armR, legL and legR. In Maya, the IK and the FK controls are both keyed on the solved pose, and each limb's ikFk
-  follows these weights. Unreal Control Rig switches are not keyed yet.
+  follows these weights. In Unreal, `kei unreal switch <shot> <pass> --limb arm_l --to ik --frame 40` does the same on
+  the Control Rig's own `<limb>_fk_ik_switch` (true is IK): the open editor places the new mode's controls where the
+  limb's bones are and measures the switch, and Kei writes it into the pass only when it moves no bone more than
+  0.5 cm. The frame before keeps the old mode, its controls pinned as they played. Then `kei unreal key`. Tested live
+  on the mannequin's CR_Mannequin_Body in Unreal 5.8: both arms and a leg, both ways, 0.0 cm at the switch.
 - **Try and sweep.** `kei try <shot> <pass> set --frame 40 --channel spine --value 0.1,0,0` makes a `kei keys` edit on
   a copy and prints the flags it removes and adds; `kei sweep <shot> <pass> --frame 40 --channel spine --from 0 --to
   0.3 --steps 7` does it for a range of values and marks the one with the fewest flags. The shot is never changed.
@@ -611,8 +615,8 @@ macOS and Linux Kei reads the resident set with `lsof` and `ps`, and the private
   `kei check` and the drawings on that motion, and the bake to an animation asset with every `ik_` bone following its
   bone. Only Kei's own folder changed; the level and the project's other assets stayed clean.
 - Not proven live yet: a whole walk from brief to sign-off with the agent seats, a second open editor, the key
-  tangents in playback, and float, bool and rotator controls (Kei keys them, but the read-back and the bake evaluate
-  the rig's transform controls only).
+  tangents in playback, and float and rotator controls (Kei keys them, but the read-back and the bake evaluate the
+  rig's transform controls only; the limbs' IK/FK switches are read back frame by frame since 20 November).
 - Not built: drawing the views from the editor itself. Kei draws views and playback with its own renderer from the
   joints Unreal gives back, and the pass records `"renderer": "kei"`.
 

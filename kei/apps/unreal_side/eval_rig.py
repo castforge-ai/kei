@@ -28,6 +28,12 @@ def _main(inp):
         else:
             kind = str(settings.control_type).split(".")[-1]
             skipped[kind] = skipped.get(kind, 0) + 1
+    switches = []     # the limbs' IK/FK switches: the bones depend on them, so each frame takes the sequence's value
+    for el in h.get_controls():
+        key = el.get_key() if hasattr(el, "get_key") else el
+        if str(key.name).endswith("_fk_ik_switch"):
+            switches.append(key)
+    switch_was = {str(k.name): h.get_control_value(k, unreal.RigControlValueType.CURRENT) for k in switches}
     originals = {str(k.name): h.get_local_transform(k) for k in keys}
     bones = {str(b.name): b for b in h.get_bones()}
     want = [b for b in inp["bones"] if b in bones]
@@ -51,10 +57,15 @@ def _main(inp):
                 h.set_local_transform(k, unreal.Transform(
                     location=[e.location.x, e.location.y, e.location.z], rotation=e.rotation,
                     scale=[e.scale.x, e.scale.y, e.scale.z]))
+            for k in switches:
+                v = lib.get_local_control_rig_bool(seq, rig, str(k.name), unreal.FrameNumber(int(f)), unit)
+                h.set_control_value(k, h.make_control_value_from_bool(bool(v)), unreal.RigControlValueType.CURRENT)
             frames[str(int(f))] = read()
     finally:
         for k in keys:
             h.set_local_transform(k, originals[str(k.name)])
+        for k in switches:
+            h.set_control_value(k, switch_was[str(k.name)], unreal.RigControlValueType.CURRENT)
     return {"frames": frames, "rest": rest, "controls": len(keys), "skipped": skipped,
             "missing": [b for b in inp["bones"] if b not in bones]}
 

@@ -268,3 +268,18 @@ def key_pass(shot_dir: Path, pass_name: str, config, probe: Callable[[str], dict
         stop_for_machine(shot_dir, f"Unreal stopped answering while keying {pass_name}: {e}")
         raise
     return report
+
+
+def switch_limb(shot_dir: Path, pass_name: str, limb: str, to: str, frame: int,
+                probe: Callable[[str], dict | None] = probe_editor) -> dict:
+    """kei unreal switch: a matched IK/FK switch in the editor the shot is animated in (kei.apps.unreal_switch)."""
+    from kei.apps.unreal_switch import switch
+    shot_dir = Path(shot_dir)
+    target = load_target(shot_dir)
+    if not target or target.get("kind") != "open":
+        raise ShotError(f"{shot_dir} is not animated in Unreal: kei keys <shot> <pass> match switches on Kei's own rig")
+    editor = locate_waiting(target, probe)
+    if editor is None:
+        raise UnrealError(f"the Unreal Editor for project {target.get('project') or 'unnamed'} does not answer: open "
+                          "it with Claireon's server on, then run the switch again")
+    return switch(connect_waiting(editor.url), shot_dir, pass_name, limb, to, frame)

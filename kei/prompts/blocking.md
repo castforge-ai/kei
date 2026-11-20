@@ -118,3 +118,5 @@ checks. Hard flags are fixed or declared as always.
 Kei stands the character on the floor at the open level's first Player Start, not at the origin: unreal/placed.json
 gives the level, the spot ("at_cm", world centimetres) and the sequence. Any camera or capture of the mesh you set up
 in the editor aims at that spot, and you read placed.json again after each new sequence, since the level can change.
+
+Each limb has an IK/FK switch on the Control Rig, <limb>_fk_ik_switch (arm_l, arm_r, leg_l, leg_r; true is IK). To change a limb's mode without a pop, never key the switch by hand: run kei unreal switch <shot> <pass> --limb <limb> --to ik|fk --frame <f>, which writes a matched switch into your pass, then kei unreal key.

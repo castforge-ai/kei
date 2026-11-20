@@ -37,11 +37,15 @@ def _main(inp):
         settings = h.get_control_settings(key)
         kind, channels = _channels(settings.control_type)
         animatable = "ANIMATION_CONTROL" in str(settings.animation_type).upper()
-        if kind is None or not animatable:
+        # a limb's IK/FK switch is an animation channel (on the mannequin rig, a bool under global_ctrl)
+        switch = (kind == "bool" and "ANIMATION_CHANNEL" in str(settings.animation_type).upper()
+                  and name.endswith("_fk_ik_switch"))
+        if kind is None or not (animatable or switch):
             continue
         keys[name] = (key, kind)
         controls.append({"name": name, "type": kind, "channels": channels, "locked": False,
-                         "limited": any(bool(x) for x in (getattr(settings, "limit_enabled", None) or []))})
+                         "limited": any(bool(x) for x in (getattr(settings, "limit_enabled", None) or [])),
+                         **({"switch": True} if switch else {})})
     bones = [b for b in h.get_bones()]
     rest = {}       # the legs at rest, in rig space: Kei derives which way the character faces from them
     for b in bones:
