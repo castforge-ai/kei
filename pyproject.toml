@@ -1,6 +1,6 @@
 [project]
 name = "kei-animator"
-version = "0.1.5.dev5"
+version = "0.1.5.dev6"
 description = "Kei Animator, by Castforge: an animation agent that keys motion by hand, stage by stage."
 requires-python = ">=3.12"
 license = "MIT"
