@@ -78,8 +78,17 @@ def test_a_body_that_does_not_move_for_a_second_is_a_dead_hold():
 def test_a_flag_is_open_until_gates_md_declares_it_with_a_reason():
     report = {"flags": [{"id": "overlap.same_stop.body.f20"}, {"id": "timing.dead_hold.body.f0"}]}
     gates = "## Declared\n- overlap.same_stop.body.f20: the catch lands hard, on purpose\n- timing.dead_hold.body.f0\n"
-    assert _declared(gates) == {"overlap.same_stop.body.f20"}          # a declaration needs its reason
+    assert _declared(gates) == ["overlap.same_stop.body.f20"]          # a declaration needs its reason
     assert [f["id"] for f in undeclared(report, gates)] == ["timing.dead_hold.body.f0"]
+
+
+def test_two_flags_with_the_same_id_need_a_declaration_each():
+    # the left and the right foot can raise the same check on the same first frame (contacts.body.f0)
+    report = {"flags": [{"id": "contacts.body.f0"}, {"id": "contacts.body.f0"}]}
+    one = "## Declared\n- contacts.body.f0: the left foot, the derived toe marker\n"
+    two = one + "- contacts.body.f0: the right foot, the derived toe marker\n"
+    assert len(undeclared(report, one)) == 1
+    assert undeclared(report, two) == []
 
 
 def test_the_passes_gate_needs_the_principles_checked_and_every_flag_fixed_or_declared(tmp_path):

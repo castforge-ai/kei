@@ -61,10 +61,10 @@ def _gate(gates, name):
 def _declared(gates):
     """The principle flag ids declared in GATES.md under "## Declared", one per line with its reason. Every
     "## Declared" section counts, not only the first."""
-    ids = set()
+    ids = []   # a list, not a set: two flags can share an id (left and right foot), one declaration each
     for m in re.finditer(r"^## Declared[^\n]*\n(.*?)(?=^## |\Z)", gates or "", re.M | re.S):
         # a principle id (principle.kind.part.f<n>) or a body check id (check.part.f<n>)
-        ids |= set(re.findall(r"^\s*[-*]\s*`?([a-z_]+(?:\.[\w-]+){1,2}\.f\d+)`?\s*[:-]\s*\S", m.group(1), re.M))
+        ids.extend(re.findall(r"^\s*[-*]\s*`?([a-z_]+(?:\.[\w-]+){1,2}\.f\d+)`?\s*[:-]\s*\S", m.group(1), re.M))
     return ids
 
 
