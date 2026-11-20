@@ -1289,6 +1289,27 @@ def _cmd_unreal_capture_test(a) -> int:
     return EXIT_DONE if r["looks_drawn"] else EXIT_ERROR
 
 
+def _cmd_unreal_render_mesh(a) -> int:
+    from kei.apps import unreal_stage
+    timeout = a.timeout
+    if timeout is None:
+        try:
+            timeout = load_config(_config_path(a.config)).unreal_mesh_timeout
+        except ConfigError:
+            timeout = None
+    print("kei: the editor renders the pass on the real mesh with Movie Render Queue; this takes a few minutes",
+          file=sys.stderr, flush=True)
+    r = unreal_stage.render_mesh(Path(a.shot), a.pass_name, timeout, force=a.force)
+    print(f"{r['pass']} on the real mesh, frames {r['frames'][0]}-{r['frames'][1]} of {r['sequence']}"
+          + (" (rendered before from the same joints; --force renders again)" if r.get("reused") else ""))
+    for view, info in r["views"].items():
+        print(f"  {view}: {', '.join(info['sheets'])}; every frame in {info['folder']}")
+    for w in r.get("warnings") or []:
+        print(f"  note: {w}")
+    print(f"report: {Path(a.shot) / f'out_{a.pass_name}' / 'mesh_report.json'}")
+    return EXIT_DONE
+
+
 def _cmd_unreal_switch(a) -> int:
     from kei.apps import unreal_stage
     r = unreal_stage.switch_limb(Path(a.shot), a.pass_name, a.limb, a.to, a.frame)
@@ -2268,6 +2289,17 @@ def main(argv: list[str] | None = None) -> int:
     uc.add_argument("pass_name", metavar="pass", help="blocking, p1, p2, ...")
     uc.add_argument("--frame", type=int, help="the frame to draw (default: the middle key frame)")
     uc.set_defaults(fn=_cmd_unreal_capture_test)
+    urm = usub.add_parser("render-mesh", help="render a keyed pass on the real mesh in the open editor (Movie Render "
+                                               "Queue: side, three quarter and feet views, every frame) into "
+                                               "out_<pass>/mesh/, with a contact sheet per view (out_<pass>/mesh_<view>.png)")
+    urm.add_argument("shot")
+    urm.add_argument("pass_name", metavar="pass", help="blocking, p1, p2, ...")
+    urm.add_argument("--timeout", type=float, help="seconds to wait for the render (default: kei.toml "
+                                                    "[apps.unreal] mesh_timeout, 1200)")
+    urm.add_argument("--force", action="store_true", help="render again even when the pass was rendered from the "
+                                                          "same joints")
+    urm.add_argument("--config", help="kei.toml (default: ./kei.toml, else kei.example.toml)")
+    urm.set_defaults(fn=_cmd_unreal_render_mesh)
     us = usub.add_parser("style", help="the character's style range from their own clips in the project: how far each "
                                        "soft body check goes in them (rig/style.json); flags inside it become notes")
     us.add_argument("shot")

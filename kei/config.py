@@ -20,6 +20,7 @@ UNREAL_SESSIONS = ("ask", "open")
 
 
 LIVE_SWITCH = ("on", "off")
+MESH_REVIEW_SWITCH = ("on", "off")
 WEB_SWITCH = ("on", "off")
 SEND_BACK_POLICIES = ("stop", "retry", "advance")   # limits.on_send_back_limit
 RETRY_NOTE = ("Automatic retry after the send-back limit. The critics' last notes are fixable at the keys: apply "
@@ -63,6 +64,8 @@ class Config:
     unreal_session: str = "ask"          # an Unreal shot: ask, or the one open editor when exactly one answers
     unreal_mesh: str | None = None       # the character's skeletal mesh asset, when the project has several
     unreal_control_rig: str | None = None   # its Control Rig asset
+    unreal_mesh_review: str = "on"       # "on": every reviewed Unreal pass is rendered on the real mesh for the critics
+    unreal_mesh_timeout: int = 1200      # seconds Kei waits for that render
     banned_names: Path | None = None     # the author's private list of names no shot file may hold (gates/sources.py)
     live_page: str = "on"                # kei run starts the shot's live page (kei live); "off" does not
     live_open: str = "on"                # the browser opens the live page when its server starts
@@ -276,6 +279,12 @@ def load_config_text(text: str, path: Path) -> Config:
         if v is not None and (not isinstance(v, str) or not v):
             raise ConfigError(f"apps.unreal.{k} must be a text, not {v!r}")
         unreal_text[k] = v
+    mesh_review = unreal_t.get("mesh_review", "on")
+    if mesh_review not in MESH_REVIEW_SWITCH:
+        raise ConfigError(f"apps.unreal.mesh_review must be one of {', '.join(MESH_REVIEW_SWITCH)}, not {mesh_review!r}")
+    mesh_timeout = unreal_t.get("mesh_timeout", 1200)
+    if isinstance(mesh_timeout, bool) or not isinstance(mesh_timeout, int) or mesh_timeout < 60:
+        raise ConfigError(f"apps.unreal.mesh_timeout must be a whole number of seconds, 60 or more, not {mesh_timeout!r}")
     live_t = data.get("live", {})
     if not isinstance(live_t, dict):
         raise ConfigError("live must be a table")
@@ -305,6 +314,7 @@ def load_config_text(text: str, path: Path) -> Config:
                   max_rule_chars=max_rule_chars, character=character.strip().lower(), app=app,
                   maya_session=session, mayapy=mayapy, blender=blender, unreal_url=u_url, unreal_project=unreal_text["project"],
                   unreal_session=u_session, unreal_mesh=unreal_text["mesh"],
-                  unreal_control_rig=unreal_text["control_rig"], live_page=live["page"], live_open=live["open"],
+                  unreal_control_rig=unreal_text["control_rig"], unreal_mesh_review=mesh_review,
+                  unreal_mesh_timeout=mesh_timeout, live_page=live["page"], live_open=live["open"],
                   banned_names=banned_names, refs_library=refs_library, web=web, web_asked="web" in seats_t,
                   stage_limits=stage_limits, primary_critic=primary_critic, stage_timeouts=stage_timeouts)

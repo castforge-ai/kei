@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from kei.config import (APPS as APP_CHOICES, example_config, LIVE_SWITCH, WEB_SWITCH, SEND_BACK_POLICIES, RETRY_NOTE, MAYA_SESSIONS as MAYA_SESSION_CHOICES, UNREAL_SESSIONS as UNREAL_SESSION_CHOICES,
+from kei.config import (APPS as APP_CHOICES, example_config, LIVE_SWITCH, MESH_REVIEW_SWITCH, WEB_SWITCH, SEND_BACK_POLICIES, RETRY_NOTE, MAYA_SESSIONS as MAYA_SESSION_CHOICES, UNREAL_SESSIONS as UNREAL_SESSION_CHOICES,
                         Config, ConfigError, load_config_text)
 from kei.toml_edit import TomlEditError, add_table, format_value, remove_array_table, set_value, unset_value
 
@@ -127,6 +127,13 @@ SETTINGS: tuple[Setting, ...] = (
             "project has one character with a Control Rig."),
     Setting("apps.unreal.control_rig", "text", None, "the character's Control Rig asset, when the mesh has several",
             "An asset path such as /Game/Characters/Mannequins/Rigs/CR_Mannequin_Body."),
+    Setting("apps.unreal.mesh_review", "choice", "on", "the critics judge every Unreal pass on the real mesh",
+            "on: before each review of an Unreal pass, the editor renders it on the character's mesh with Movie "
+            "Render Queue (a side, a three quarter and a low feet view, every frame), and the critics judge those "
+            "frames as well as Kei's line drawings. A render that fails pauses the shot and says why; it is never "
+            "replaced by the line drawings in silence. off: the critics see Kei's line drawings only "
+            "(kei unreal render-mesh still renders a pass by hand).", MESH_REVIEW_SWITCH),
+    Setting("apps.unreal.mesh_timeout", "int", 1200, "seconds Kei waits for the editor to render a pass on the mesh"),
     Setting("live.page", "choice", "on", "the live page: watch the shot's stages, poses and notes as Kei works",
             "on: kei run starts the shot's live page on 127.0.0.1 and prints its link; the page shows the stage, "
             "the key poses of each try, the critics' notes on their frames, the references and the renders, and "

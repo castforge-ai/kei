@@ -61,6 +61,10 @@ class FakeEditor:
         self.missing_channels: set[str] = set()
         self.looks: list[dict] = []        # make_look calls
         self.performer_bones = {}          # performer -> (frame -> {bone: [x, y, z]}) in rig space
+        self.levels: set[str] = set()      # levels Kei made (render_level)
+        self.mesh_calls: list[dict] = []   # render_mesh calls
+        self.mesh_written = None           # frames written per view by a render (None: every frame)
+        self.mesh_error = None             # the render stage stops with this
 
     def handlers(self) -> dict:
         return {"probe": self.probe, "make_sequence": self.make_sequence, "read_rig": self.read_rig,
@@ -68,7 +72,39 @@ class FakeEditor:
                 "open_sequence": self.open_sequence, "eval_rig": self.eval_rig, "bake": self.bake,
                 "read_bake": self.read_bake, "organize": self.organize,
                 "unload_kei": self.unload_kei, "capture_frame": self.capture_frame,
-                "load_pose": self.load_pose, "layer_keys": self.layer_keys, "make_look": self.make_look}
+                "load_pose": self.load_pose, "layer_keys": self.layer_keys, "make_look": self.make_look,
+                "render_level": self.render_level, "render_mesh": self.render_mesh}
+
+    def render_level(self, inp):
+        if not inp["level"].startswith("/Game/Kei/"):
+            return {"error": "Kei makes levels only under /Game/Kei"}
+        made = inp["level"] not in self.levels
+        self.levels.add(inp["level"])
+        return {"level": inp["level"], "made": made, "restored": "/Game/Maps/L_Gym" if made else ""}
+
+    def render_mesh(self, inp):
+        """Like Movie Render Queue, but at once: a small PNG per frame per view under out_dir/<view>/."""
+        import os
+        from kei.sheet import _Canvas
+        self.mesh_calls.append(inp)
+        if inp["stage"] == "open":
+            self.opened = inp["sequence"]
+            return {"stage": "open", "sequence": inp["sequence"]}
+        if self.opened != inp["sequence"]:
+            return {"error": "the sequence " + inp["sequence"] + " is not open in Sequencer"}
+        if self.mesh_error:
+            return {"error": self.mesh_error}
+        count = int(inp["last"]) + 1 if self.mesh_written is None else self.mesh_written
+        for v in inp["views"]:
+            os.makedirs(os.path.join(inp["out_dir"], v), exist_ok=True)
+            for f in range(count):
+                cv = _Canvas(64, 36)
+                cv.line(0, f % 36, 63, f % 36, (200, 30, 30))
+                with open(os.path.join(inp["out_dir"], v, "f%04d.png" % f), "wb") as fh:
+                    fh.write(cv.png())
+        return {"stage": "render", "frames": int(inp["last"]) + 1, "travel_cm": 140.0, "warnings": [],
+                "views": [{"name": v, "sequence": inp["views_folder"] + "/x_" + v, "position": [0, 0, 0],
+                           "target": [0, 0, 80]} for v in inp["views"]]}
 
     def make_look(self, inp):
         """A performer's materials: one Kei instance per slot (three slots), under the shot's looks folder."""

@@ -5,8 +5,9 @@ render_pass(shot_dir, pass_name, size) -> dict
   sheet (keys.png), the playback (<name>.mp4, or .gif without ffmpeg) and, for a loop, the ten loops (<name>_x10.mp4).
   The pass records the renderer in out_<pass>/unreal_report.json under "views": "renderer": "kei". A second performer
   (joints.json "performers") is drawn in the same views, behind the character, in one lighter colour.
-Capture from the editor (Claireon frame capture of a camera Kei places) is NOT part of this version: the live spike
-did not prove it, so Kei never claims it. A request for it is refused in plain words and never falls back in silence.
+These are Kei's line drawings. The pass on the character's real mesh is rendered by the editor itself, with Movie
+Render Queue, in kei.apps.unreal_mesh (kei unreal render-mesh, and before every review): this module never draws
+the mesh, and a request for that here is refused in plain words, never answered with the line drawings in silence.
 """
 from __future__ import annotations
 

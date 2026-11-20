@@ -175,6 +175,23 @@ def capture_test(shot_dir: Path, pass_name: str, frame: int | None = None,
     return shoot(connect_waiting(editor.url), shot_dir, pass_name, frame)
 
 
+def render_mesh(shot_dir: Path, pass_name: str, timeout: float | None = None, force: bool = False,
+                probe: Callable[[str], dict | None] = probe_editor) -> dict:
+    """kei unreal render-mesh, and the conductor before a review: the pass rendered on the real mesh by the editor the
+    shot is animated in (kei.apps.unreal_mesh)."""
+    from kei.apps.unreal_mesh import TIMEOUT_S, render_mesh as draw
+    shot_dir = Path(shot_dir)
+    target = load_target(shot_dir)
+    if not target or target.get("kind") != "open":
+        raise ShotError(f"{shot_dir} was not animated in Unreal: there is no character in an editor to render")
+    editor = locate_waiting(target, probe)
+    if editor is None:
+        raise UnrealError(f"the Unreal Editor for project {target.get('project') or 'unnamed'} does not answer: open "
+                          "it with Claireon's server on, then render again")
+    return draw(connect_waiting(editor.url), shot_dir, pass_name, TIMEOUT_S if timeout is None else timeout,
+                force=force)
+
+
 def bake(shot_dir: Path, pass_name: str, probe: Callable[[str], dict | None] = probe_editor) -> dict:
     """kei export --to unreal: the bake of an approved shot, in the editor the shot was animated in."""
     from kei.apps.unreal_bake import bake_shot
