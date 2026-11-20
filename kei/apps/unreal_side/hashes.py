@@ -19,7 +19,7 @@ UNREAL_SIDE_HASHES = {
     "read_bake.py": "fc65396934a5740661d777a8b803a9902ae79cf17fade3e2bf711252edaf0f69",
     "read_rig.py": "f759d5d1795aa7425c4c2617791d4e659c93bdd8947534ec1972ef79dd69eff3",
     "render_level.py": "f1f56bec682c38de303efeceae8193af24ef1d0e3bea09cd99f8b7a5ed74618f",
-    "render_mesh.py": "0799a4a832835d16660c0ea1769707fd1aaacaf2b8c16b2bd99b8e1c5d339f56",
+    "render_mesh.py": "a542764e909e994fdb6e641efc5c9b8e1febfabb200756cefdbcd12c4390d7fa",
     "save_asset.py": "2402069ce9b23556e26f41ec63a18d899610b7dc62dc32efd72489edf3c56ebe",
     "set_keys.py": "2c52670c81d46c496256dee9d094522335a316e361592cf3cb7898a4eeb67752",
     "unload_kei.py": "a7fa7d7ebda9660adf9fac20f8ebeb8be7ee9eda66a20d0292d411f10301cb56",

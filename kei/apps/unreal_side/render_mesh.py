@@ -57,7 +57,7 @@ def _cameras(p0, p1, comp, size, names):
     every = {
         "side": (mid + side * dist + up(SIDE_Z), mid + up(AIM_Z)),
         "three_quarter": (mid + (side * 0.7 + fwd * 0.7) * dist + up(THREE_Q_Z), mid + up(AIM_Z)),
-        "feet": (mid + feet_dir * (dist * 0.75) + up(FEET_Z), mid + up(FEET_AIM_Z)),
+        "feet": (mid + feet_dir * (dist * 0.45) + up(FEET_Z), mid + up(FEET_AIM_Z)),
     }
     unknown = [n for n in names if n not in every]
     if unknown:
