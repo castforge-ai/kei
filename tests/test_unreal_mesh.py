@@ -217,3 +217,20 @@ def test_the_editor_scripts_keep_kei_s_rules():
     assert "load_level(before)" in level and "get_dirty_map_packages" in level
     for text in (mesh, level):
         assert "KEI_ROOT" in text
+
+
+def test_a_character_not_bound_yet_is_asked_again_after_a_tick(tmp_path):
+    shot = mesh_shot(tmp_path)
+    ed = FakeEditor()
+    real = ed.render_mesh
+    late = {"n": 1}
+
+    def slow(inp):
+        if inp["stage"] == "render" and late["n"]:
+            late["n"] -= 1
+            return {"error": "the character of x is not bound yet: render again"}
+        return real(inp)
+    ed.render_mesh = slow
+    with ed.server() as fake:
+        assert M.render_mesh(ed.client(), shot, "p1", timeout=5, sleep=no_sleep)["ok"]
+        assert fake.scripts == ["render_level", "render_mesh", "render_mesh", "render_mesh"]

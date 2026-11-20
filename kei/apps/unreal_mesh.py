@@ -41,6 +41,7 @@ LABEL_H = 14
 HEADER_H = 22
 GAP = 6                # white space between two tiles
 REPORT = "mesh_report.json"
+BIND_TRIES = 3         # a busy editor may need more than one tick to bind the character after the open
 
 
 def mesh_folder(shot_dir: Path, pass_name: str) -> Path:
@@ -269,12 +270,18 @@ def render_mesh(client: Claireon, shot_dir: Path, pass_name: str, timeout: float
             (folder / v).mkdir(parents=True, exist_ok=True)
         level = run_script(client, "render_level.py", {"level": LEVEL})
         run_script(client, "render_mesh.py", {"stage": "open", "sequence": seq})
-        tick()          # the character is bound one editor tick after the sequence opens
-        tick()
-        started = run_script(client, "render_mesh.py", {
-            "stage": "render", "sequence": seq, "out_dir": folder.resolve().as_posix(), "last": frames[-1],
-            "views": views, "level": LEVEL, "views_folder": kei_folder(shot_dir) + "/Views", "size": list(SIZE),
-            "pelvis": "pelvis"})
+        ask = {"stage": "render", "sequence": seq, "out_dir": folder.resolve().as_posix(), "last": frames[-1],
+               "views": views, "level": LEVEL, "views_folder": kei_folder(shot_dir) + "/Views", "size": list(SIZE),
+               "pelvis": "pelvis"}
+        for attempt in range(BIND_TRIES):
+            tick()      # the character is bound one editor tick after the sequence opens
+            tick()
+            try:
+                started = run_script(client, "render_mesh.py", ask)
+                break
+            except UnrealError as e:
+                if "not bound yet" not in str(e) or attempt == BIND_TRIES - 1:
+                    raise
         rep.update({"level_made": bool(level.get("made")), "cameras": started.get("views", []),
                     "travel_cm": started.get("travel_cm"), "warnings": started.get("warnings", [])})
         wait_for_frames(folder, views, frames, timeout, sleep, clock)
