@@ -29,7 +29,7 @@ def test_all_pass(tmp_path):
     out = panel_review(stage_by_id("blocking"), tmp_path, "a box falls",
                        [critic("a", PASS, calls), critic("b", PASS, calls)])
     assert out == []
-    assert [n for n, _ in calls] == ["a", "b"]
+    assert sorted(n for n, _ in calls) == ["a", "b"]     # critics run in parallel: each once, in any order
 
 
 def test_any_send_back_wins(tmp_path):
