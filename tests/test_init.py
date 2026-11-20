@@ -52,7 +52,9 @@ def test_python_dash_m_kei_runs_the_same_command(tmp_path):
 def test_a_dotted_app_setting_is_written_into_its_existing_table(tmp_path, monkeypatch):
     """Every apps.maya.* and apps.unreal.* setting, on the file kei init writes (the tables are already there)."""
     import tomllib
+    import kei.settings
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(kei.settings.shutil, "which", lambda prog: f"/usr/bin/{prog}")   # no agent CLI on CI
     assert main(["init"]) == 0
     for key, value in (("apps.unreal.url", "http://127.0.0.1:50000/mcp"), ("apps.unreal.session", "open"),
                        ("apps.unreal.project", "C:/Projects/MyGame"), ("apps.unreal.mesh", "/Game/SKM_Manny"),

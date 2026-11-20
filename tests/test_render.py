@@ -21,7 +21,7 @@ FFMPEG = shutil.which("ffmpeg")   # found before any test empties PATH
 def ffmpeg_frames(path, w, h):
     """Decode a video or GIF with ffmpeg (an independent decoder) to raw RGB frames of w by h pixels."""
     r = subprocess.run([FFMPEG, "-loglevel", "error", "-i", str(path), "-f", "rawvideo", "-pix_fmt", "rgb24",
-                        "-vsync", "0", "-"], capture_output=True, check=True)
+                        "-fps_mode", "passthrough", "-"], capture_output=True, check=True)
     n = w * h * 3
     assert len(r.stdout) % n == 0
     return [r.stdout[i:i + n] for i in range(0, len(r.stdout), n)]
