@@ -11,6 +11,12 @@
 # Input: sequence, asset, mesh, end (last frame of the delivery range), fps, pairs [[bone, ik_bone]], performer ("" for
 # the character, or the name of a second performer, baked from its own Control Rig track, in its own rig space).
 # Output: asset, frames, ik_copy ("rig"), bones (written), skipped_bones (count the skeleton lacks).
+def _same_tf(a, b):
+    qa, qb = a.rotation, b.rotation
+    dot = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w
+    return (a.translation - b.translation).length() < 0.001 and abs(abs(dot) - 1.0) < 1e-7
+
+
 def _main(inp):
     asset = inp["asset"]
     if not asset.startswith(KEI_ROOT + "/"):
@@ -45,11 +51,22 @@ def _main(inp):
     tracks = {n: ([], [], []) for n in bones}
     try:
         for f in range(last + 1):
+            target = []
             for k in keys:
                 e = lib.get_local_control_rig_euler_transform(seq, rig, str(k.name), unreal.FrameNumber(f), unit)
-                h.set_local_transform(k, unreal.Transform(
+                t = unreal.Transform(
                     location=[e.location.x, e.location.y, e.location.z], rotation=e.rotation,
-                    scale=[e.scale.x, e.scale.y, e.scale.z]))
+                    scale=[e.scale.x, e.scale.y, e.scale.z])
+                target.append((k, t))
+                h.set_local_transform(k, t)
+            # Setting one control can reset another set earlier (on one production rig a foot-roll
+            # control wipes the toe IK control), so put back any that drifted before solving.
+            for _ in range(3):
+                drifted = [(k, t) for k, t in target if not _same_tf(h.get_local_transform(k), t)]
+                if not drifted:
+                    break
+                for k, t in drifted:
+                    h.set_local_transform(k, t)
             rig.execute(unreal.Name("Forwards Solve"))
             if pairs:
                 pose = A.get_reference_pose(mesh.skeleton)

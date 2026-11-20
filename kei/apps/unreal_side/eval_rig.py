@@ -8,6 +8,12 @@
 # Input: sequence, frames [int], bones [name], performer ("" for the character, or a second performer's name). Output: frames {frame: {bone: [x, y, z]}}, rest {bone: [x, y, z]}
 # (the rig's own rest pose: every control at its initial value, whatever frame the editor shows), controls (count),
 # skipped (control types it did not set).
+def _same_tf(a, b):
+    qa, qb = a.rotation, b.rotation
+    dot = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w
+    return (a.translation - b.translation).length() < 0.001 and abs(abs(dot) - 1.0) < 1e-7
+
+
 def _main(inp):
     seq = load_sequence(inp["sequence"])
     current = unreal.LevelSequenceEditorBlueprintLibrary.get_current_level_sequence()
@@ -52,14 +58,25 @@ def _main(inp):
             h.set_local_transform(k, h.get_local_transform(k, True))
         rest = read()
         for f in inp["frames"]:
+            target = []
             for k in keys:
                 e = lib.get_local_control_rig_euler_transform(seq, rig, str(k.name), unreal.FrameNumber(int(f)), unit)
-                h.set_local_transform(k, unreal.Transform(
+                t = unreal.Transform(
                     location=[e.location.x, e.location.y, e.location.z], rotation=e.rotation,
-                    scale=[e.scale.x, e.scale.y, e.scale.z]))
+                    scale=[e.scale.x, e.scale.y, e.scale.z])
+                target.append((k, t))
+                h.set_local_transform(k, t)
             for k in switches:
                 v = lib.get_local_control_rig_bool(seq, rig, str(k.name), unreal.FrameNumber(int(f)), unit)
                 h.set_control_value(k, h.make_control_value_from_bool(bool(v)), unreal.RigControlValueType.CURRENT)
+            # Setting one control can reset the local value of another set earlier in the loop (seen on
+            # a production rig: a foot-roll control wipes the toe IK control), so put back any that drifted.
+            for _ in range(3):
+                drifted = [(k, t) for k, t in target if not _same_tf(h.get_local_transform(k), t)]
+                if not drifted:
+                    break
+                for k, t in drifted:
+                    h.set_local_transform(k, t)
             frames[str(int(f))] = read()
     finally:
         for k in keys:

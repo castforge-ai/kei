@@ -18,6 +18,12 @@ def _angle(a, b):
     return math.degrees(2.0 * math.acos(d))
 
 
+def _same_tf(a, b):
+    qa, qb = a.rotation, b.rotation
+    dot = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w
+    return (a.translation - b.translation).length() < 0.001 and abs(abs(dot) - 1.0) < 1e-7
+
+
 def _main(inp):
     if not inp["sequence"].startswith(KEI_ROOT + "/"):
         raise RuntimeError("Kei loads a pose only into its own sequences under " + KEI_ROOT)
@@ -87,10 +93,21 @@ def _main(inp):
     originals = {str(k.name): h.get_local_transform(k) for k, _ in euler_keys}
     worst, total, count, offsets = [], 0.0, 0, {}
     try:
+        target = []
         for k, e in euler_keys:
-            h.set_local_transform(k, unreal.Transform(
+            t = unreal.Transform(
                 location=[e.location.x, e.location.y, e.location.z], rotation=e.rotation,
-                scale=[e.scale.x, e.scale.y, e.scale.z]))
+                scale=[e.scale.x, e.scale.y, e.scale.z])
+            target.append((k, t))
+            h.set_local_transform(k, t)
+        # Setting one control can reset another set earlier (on one production rig a foot-roll
+        # control wipes the toe IK control), so put back any that drifted before solving.
+        for _ in range(3):
+            drifted = [(k, t) for k, t in target if not _same_tf(h.get_local_transform(k), t)]
+            if not drifted:
+                break
+            for k, t in drifted:
+                h.set_local_transform(k, t)
         rig.execute(unreal.Name("Forwards Solve"))
         for n in A.get_bone_names(pose):
             n = str(n)
