@@ -11,10 +11,22 @@ QUESTION_RULE = ("To ask the author something only a person can settle (an uncle
                  "viewing at real rate), write the question in QUESTIONS.md, name the file to look at, and stop: "
                  "the shot waits for kei answer. No agent can watch video at real rate: never write that you did.")
 
+RECORD_RULE = ("Kei keeps the shot's bookkeeping in KEI_RECORD.md (stage, tries, each pass's hash and flag counts, "
+               "file pointers) and writes it before each review: do not keep stage, version or hash lines in PLAN.md "
+               "or GATES.md, and never edit KEI_RECORD.md.")
+SCRATCH_RULE = ("Your own helpers (a measuring script, a probe, a temporary render) go in .kei/scratch/, Kei's "
+                "folder, and run as python .kei/scratch/<name>.py: python runs nothing else, no one-liners. "
+                "They stay in Kei's "
+                "folder, never delivered. Use kei probe, kei keys, kei try, kei sweep, kei poses and kei check "
+                "(--explain) before you write one.")
+
 SOURCE_RULE = ("Sources: cite only published research and recorded footage, by author and year, and say what a "
                "source shows in your own words. Describe the craft in your own words. Quote at most one sentence of "
-               "any source. Mark every number you did not read in the source itself during this shot with "
-               "(unchecked), right after the number. A name on the author's private list fails the stage.")
+               "any source. Mark (unchecked) right after a number that states a fact about the real world (a speed, an angle, "
+               "a mass, a timing taken from research or footage) when you did not read it in the source itself "
+               "during this shot. Never mark the shot's own numbers: frames, key values, the timings you chose, "
+               "or what kei check, probe or poses measured. Kei counts the marks itself and shows them to the "
+               "author and the critics. A name on the author's private list fails the stage.")
 
 
 def library_rule(library: Path) -> str:
@@ -31,12 +43,52 @@ def stage_contract(stage: Stage) -> str:
     return (HERE / f"{stage.id}.md").read_text(encoding="utf-8").strip()
 
 
+SERIES_MIN = 5    # files of one numbered series in a folder (f0000.png, key_f0012.png...) listed as one line
+SCRIPTS_MIN = 12  # python files in one folder listed as one line: the agent's own helpers, not the shot's artifacts
+
+
+def _series(name: str) -> str | None:
+    """'key_f0012.png' -> 'key_f*.png'; None for a name with no number."""
+    import re
+    m = re.match(r"^(.*?)(\d+)(\D*)$", name)
+    return f"{m.group(1)}*{m.group(3)}" if m else None
+
+
 def _artifacts(shot_dir: Path) -> list[str]:
-    out = []
-    for p in sorted(Path(shot_dir).rglob("*")):
+    """What is already in the shot folder, one line per file, with long runs folded: a numbered series of five files
+    or more in a folder (each frame of a render, each key still) is one line with its count, and a folder with many
+    python helpers is one line too. A late stage would otherwise list thousands of frames in every prompt."""
+    shot_dir = Path(shot_dir)
+    by_dir: dict[Path, list[str]] = {}
+    for p in sorted(shot_dir.rglob("*")):
         rel = p.relative_to(shot_dir)
         if p.is_file() and not SKIP_DIRS.intersection(rel.parts):
-            out.append(rel.as_posix())
+            by_dir.setdefault(rel.parent, []).append(rel.name)
+    out = []
+    for folder, names in by_dir.items():
+        prefix = "" if str(folder) == "." else folder.as_posix() + "/"
+        groups: dict[str, list[str]] = {}
+        for n in names:
+            key = _series(n)
+            if key:
+                groups.setdefault(key, []).append(n)
+        folded = {n for key, ns in groups.items() if len(ns) >= SERIES_MIN for n in ns}
+        scripts = [n for n in names if n.endswith(".py") and n not in folded]
+        if len(scripts) >= SCRIPTS_MIN:
+            folded |= set(scripts)
+        shown_series = set()
+        for n in names:
+            if n not in folded:
+                out.append(prefix + n)
+                continue
+            key = _series(n)
+            if key and key in groups and len(groups[key]) >= SERIES_MIN:
+                if key not in shown_series:
+                    shown_series.add(key)
+                    ns = groups[key]
+                    out.append(f"{prefix}{key} ({len(ns)} files, {ns[0]} to {ns[-1]})")
+        if len(scripts) >= SCRIPTS_MIN:
+            out.append(f"{prefix}*.py ({len(scripts)} python helpers, not listed)")
     return out
 
 
@@ -65,7 +117,7 @@ def stage_prompt(stage: Stage, shot_dir: Path, request: str, misses: list[str], 
         lines += [""]
     lines += ["Already in the shot folder:"]
     lines += [f"- {a}" for a in _artifacts(shot_dir)] or ["- (nothing yet)"]
-    lines += ["", QUESTION_RULE, SOURCE_RULE]
+    lines += ["", QUESTION_RULE, SOURCE_RULE, SCRATCH_RULE, RECORD_RULE]
     if refs_library:
         lines += ["", library_rule(refs_library)]
     if answers:

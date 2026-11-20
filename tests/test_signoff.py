@@ -85,7 +85,7 @@ def test_note_with_a_heading_stays_one_lesson(tmp_path):
 def test_note_with_a_bad_stage_is_one_line_and_exit_1(tmp_path, capsys):
     root = waiting(tmp_path)
     assert note(tmp_path, root, "x", "--stage", "bloking") == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert "bloking" in out and "Traceback" not in out
     assert load_state(root).status == "needs_approval"
     assert not (tmp_path / "lessons.local.md").exists()

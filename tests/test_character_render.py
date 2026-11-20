@@ -172,13 +172,13 @@ def test_kei_render_character_draws_the_rest_views_and_the_silhouette(tmp_path, 
 def test_kei_render_an_unknown_character_exits_1(tmp_path, capsys):
     from kei.cli import main
     assert main(["render", "--character", "bob", "--out", str(tmp_path)]) == 1
-    assert "bob" in capsys.readouterr().out
+    assert "bob" in "".join(capsys.readouterr())
 
 
 def test_kei_render_without_a_shot_or_a_character_exits_1(capsys):
     from kei.cli import main
     assert main(["render"]) == 1
-    assert "shot" in capsys.readouterr().out
+    assert "shot" in "".join(capsys.readouterr())
 
 
 def test_render_shot_with_a_character(tmp_path):

@@ -353,6 +353,28 @@ def _limit(cmds, node: str, attr: str):
     return None if lo is None and hi is None else (lo, hi)
 
 
+def _clamp_spline_tangents(cmds, keys, plugs, layer):
+    """Give every spline key Kei's clamped slope, so Maya plays the curve Kei bakes: a held pose stays held and no
+    curve overshoots its keys (kei.sample). The slope is set as a fixed tangent angle, in the curve's own unit (degrees
+    or the scene's length) per frame, the measure Maya's tangent angles use here (checked against a Maya bake)."""
+    for plug, (node, attr) in plugs.items():
+        series = sorted((k["f"], float(k["channels"][plug]), k.get("tangent", "spline")) for k in keys
+                        if plug in k["channels"])
+        if len(series) < 2:
+            continue
+        slopes = km.clamped_slopes([s[0] for s in series], [s[1] for s in series])
+        curves = (cmds.animLayer(layer, q=True, findCurveForPlug=f"{node}.{attr}") or []) if layer else []
+        target = curves[0] if curves else node
+        akw = {} if curves else {"attribute": attr}
+        for (f, _v, tangent), m in zip(series, slopes):
+            if tangent != "spline":
+                continue
+            ang = math.degrees(math.atan(m))
+            cmds.keyTangent(target, time=(f, f), lock=False, **akw)
+            cmds.keyTangent(target, time=(f, f), inTangentType="fixed", outTangentType="fixed", inAngle=ang,
+                            outAngle=ang, **akw)
+
+
 @tool("change", keys="list", layer=("str", None), feedback=("str", None), feedback_controls=("list", None),
       controls_layer=("list", None))
 def set_keys(keys, layer=None, feedback=None, feedback_controls=None, controls_layer=None):
@@ -409,6 +431,7 @@ def set_keys(keys, layer=None, feedback=None, feedback_controls=None, controls_l
                 reached = max(lim[0], v) if lim[0] is not None else v
                 reached = min(lim[1], reached) if lim[1] is not None else reached
                 clipped.append({"f": k["f"], "channel": plug, "asked": v, "reached": reached})
+    _clamp_spline_tangents(cmds, keys, plugs, layer)
     wraps = [k for k in keys if k.get("wrap")]
     if wraps:       # a loop: the seam keys keep the slope their wrap neighbours gave them, then the wraps go
         real = [k["f"] for k in keys if not k.get("wrap")]

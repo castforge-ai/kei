@@ -371,7 +371,7 @@ def answer_note(shot: Path, n: int, text: str, scope: str, stage: str, attempt: 
     from kei.lessons import add_lesson
     from kei.signoff import latest_round
     write_note(shot, n, text, scope, stage)
-    entry = {"stage": stage, "attempt": attempt, "result": "note", "lesson": add_lesson(lessons, text, stage, scope),
+    entry = {"stage": stage, "attempt": attempt, "result": "note", "lesson": add_lesson(lessons, text, stage, scope, shot),
              "misses": [text], "at": _now(), "scope": scope, "pose": f"{FOLDER}/{n}/pose.json"}
     round_id = latest_round(shot)
     if round_id:

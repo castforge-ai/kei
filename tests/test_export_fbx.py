@@ -547,4 +547,36 @@ def test_the_readme_names_fbx_as_an_export_format():
     from pathlib import Path
     text = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
     assert "FBX is planned" not in text
-    assert "--format gltf|fbx" in text
+    assert "--format fbx" in text and "--format both" in text
+
+
+def test_kei_export_of_a_shot_takes_its_character_newest_pass_and_writes_on_top(tmp_path, capsys):
+    from kei.cli import main
+    shot = tmp_path / "walk"
+    for p in ("p1", "p2"):
+        (shot / f"out_{p}").mkdir(parents=True)
+        (shot / f"out_{p}" / "shot.json").write_text(json.dumps({**SHOT, "character": "keira"}), encoding="utf-8")
+    assert main(["export", str(shot), "--format", "both"]) == 0
+    assert Scene((shot / "walk_p2.fbx").read_bytes()).of("AnimationStack")
+    assert (shot / "walk_p2.glb").is_file()
+    out = capsys.readouterr().out
+    assert "pass p2" in out and "Keira" in out
+
+
+def test_kei_export_takes_the_approved_pass_of_a_delivered_shot(tmp_path):
+    from kei.cli import main
+    shot = tmp_path / "walk"
+    for p in ("p1", "p2"):
+        (shot / f"out_{p}").mkdir(parents=True)
+        (shot / f"out_{p}" / "shot.json").write_text(json.dumps(SHOT), encoding="utf-8")
+    (shot / ".kei").mkdir()
+    (shot / ".kei" / "layout.json").write_text(json.dumps({"final_pass": "p1"}), encoding="utf-8")
+    from kei.cli import _final_pass
+    assert _final_pass(shot) == "p1"
+
+
+def test_kei_export_of_a_shot_with_no_pass_says_so(tmp_path, capsys):
+    from kei.cli import main
+    (tmp_path / "empty").mkdir()
+    assert main(["export", str(tmp_path / "empty"), "--character", "kei"]) == 1
+    assert "no pass to export" in capsys.readouterr().err

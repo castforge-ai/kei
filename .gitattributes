@@ -1,0 +1,13 @@
+# One line-ending rule: every text file is stored and checked out with LF, on every system.
+# A Windows editor that writes CRLF no longer turns a small change into a whole-file diff.
+* text=auto eol=lf
+
+# Binary files: never converted.
+*.png binary
+*.jpg binary
+*.gif binary
+*.mp4 binary
+*.glb binary
+*.fbx binary
+*.ico binary
+*.whl binary

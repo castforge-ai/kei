@@ -66,6 +66,18 @@ POSE_TO_POSE = 0.6       # this share of extremes on blocking keys or more: the 
 UNISON = 0.97            # correlation of the left and right speeds over the frames either moves
 UNISON_RATIO = 0.8       # ... and the slower side moves at least this share of the faster
 TWIN = 0.02              # m: left and right mirrored within this at a key are twins
+CLAVICLE_MIN = 0.01      # m: clavicles closer than this give no chest axis; the upper arms give it instead
+
+# The limits each kind of flag is measured against (kei check --explain prints them with their values).
+LIMITS_OF = {
+    "same_stop": ("SAME_STOP", "SAME_STOP_PARTS", "REST"), "rigid_arm": ("RIGID", "RIGID_MIN"),
+    "dead_stop": ("OVERSHOOT", "SETTLE_LOOK"), "only_keys": ("EXTREME_MIN", "ON_KEY", "POSE_TO_POSE"),
+    "no_ease_in": ("EASE_JUMP",), "no_ease_out": ("EASE_JUMP",), "constant": ("CONSTANT", "CONSTANT_RUN"),
+    "straight": ("STRAIGHT", "STRAIGHT_MIN"), "none": ("ANTIC_LOOK", "ANTIC_MIN"),
+    "dead": ("DEAD", "DEAD_PART_S"), "fingers_dead": ("DEAD", "DEAD_PART_S"), "dead_hold": ("DEAD", "DEAD_HOLD_S"),
+    "even": ("EVEN_SPANS",), "rigid": ("SQS_RANGE",), "unison": ("UNISON", "UNISON_RATIO"),
+    "twin_pose": ("TWIN", "CLAVICLE_MIN"), "hidden_hand": ("CLAVICLE_MIN",), "straight_line": ("LINE_STRAIGHT",),
+}
 LINE_STRAIGHT = 0.02     # share of the body's length: a line of action bending less is straight
 SQS_RANGE = 0.004        # share of the height: a trunk length, curve and pelvis height all changing less is rigid
 EVEN_SPANS = 3           # blocking spans: this many equal spans in a row are an even rhythm
@@ -136,7 +148,10 @@ class Motion:
 
     def chest_axes(self, i: int):
         j = self.j[i]
-        right = _unit(_sub(j["clavicle_r"], j["clavicle_l"]))
+        across = _sub(j["clavicle_r"], j["clavicle_l"])
+        if _len(across) < CLAVICLE_MIN and "upperarm_l" in j and "upperarm_r" in j:
+            across = _sub(j["upperarm_r"], j["upperarm_l"])   # kei_model's clavicles share one point
+        right = _unit(across)
         up0 = _sub(j["neck_01"], j["spine_03"])
         up = _unit(_sub(up0, _mul(right, _dot(up0, right))))
         return right, up, _cross(right, up)
@@ -492,7 +507,10 @@ def measure(frames: list[dict], fps: float, height: float, blocking_keys: list[i
         j = m.j[i]
         if not all(p in j for p in ("clavicle_l", "clavicle_r", "pelvis", "neck_01", "spine_03")):
             continue
-        xs = sorted([j["clavicle_l"][0], j["clavicle_r"][0]])
+        sides = ("clavicle_l", "clavicle_r")
+        if _len(_sub(j["clavicle_r"], j["clavicle_l"])) < CLAVICLE_MIN and "upperarm_l" in j and "upperarm_r" in j:
+            sides = ("upperarm_l", "upperarm_r")   # kei_model's clavicles share one point: no torso width
+        xs = sorted([j[sides[0]][0], j[sides[1]][0]])
         lo_y, hi_y = j["pelvis"][1], j["neck_01"][1]
         for h in ("hand_l", "hand_r"):
             if h not in j:
@@ -540,10 +558,10 @@ def measure(frames: list[dict], fps: float, height: float, blocking_keys: list[i
 
 
 def undeclared(report: dict, gates_text: str) -> list[dict]:
-    """The flags not declared in GATES.md under "## Declared" ("- <id>: <reason>"), the same reading as the gate."""
-    from kei.gates.pipeline import _declared
-    ids = _declared(gates_text)
-    return [f for f in report.get("flags", []) if f["id"] not in ids]
+    """The flags not declared in GATES.md under "## Declared" ("- <id>: <reason>"), the same reading as the gate:
+    a declared flag whose first frame moved by a few frames since stays declared."""
+    from kei.gates.pipeline import open_flags
+    return open_flags(report.get("flags", []), gates_text)
 
 
 def _blocking_keys(shot_dir: Path) -> list[int]:

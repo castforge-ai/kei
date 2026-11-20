@@ -4,7 +4,7 @@ the Host header, a strict Content-Security-Policy). Read only: the page has no P
 serve(shot, port=0, open_browser=True) -> serves until the shot is idle (IDLE_SECONDS with no change and no page
   open) or ends; writes <shot>/.kei/live/server.json with its pid, port and link.
 ensure(shot, open_browser=True) -> the link of the shot's live page, starting a server in its own process when none
-  answers. kei run calls it, unless kei.toml says [live] enabled = false or KEI_NO_LIVE is set.
+  answers. kei run calls it, unless kei.toml says [live] page = "off" or KEI_NO_LIVE is set.
 """
 from __future__ import annotations
 

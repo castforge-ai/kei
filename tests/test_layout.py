@@ -71,7 +71,9 @@ def test_kei_approve_packs_the_shot_in_every_app(tmp_path, capsys):
     assert "production" in capsys.readouterr().out
 
 
-def test_a_command_on_a_delivered_shot_gets_the_working_layout_and_a_reopened_shot_stays_unpacked(tmp_path):
+def test_a_command_on_a_delivered_shot_gets_the_working_layout_and_a_reopened_shot_stays_unpacked(tmp_path,
+                                                                                                monkeypatch):
+    monkeypatch.chdir(tmp_path)   # the note's lesson goes to this folder's lessons.local.md, never the repository's
     shot = delivered(tmp_path)
     layout.pack(shot)
     assert main(["status", str(shot)]) == 0 and layout.is_packed(shot)       # read as it is

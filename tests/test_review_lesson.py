@@ -97,7 +97,7 @@ def test_kei_review_lesson_on_a_bad_bundle_is_one_line_and_exit_1(tmp_path, caps
     bundle = make_bundle(tmp_path)
     (bundle / "lesson.md").write_text("changed", encoding="utf-8")
     assert main(["review", "--lesson", str(bundle), "--no-browser"]) == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert len(out.strip().splitlines()) == 1 and "lesson.md" in out and "Traceback" not in out
 
 

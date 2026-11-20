@@ -3,11 +3,13 @@ so the two can never disagree about what a sign-off does."""
 from __future__ import annotations
 
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from kei.book import ALL
-from kei.lessons import add_lesson, remove_lesson, scope_name
+from kei.lessons import add_lesson, remove_lesson, same_lesson, scope_name
+from kei.notesign import sign, signed
 from kei.stages import STAGES
 from kei.state import ShotState, StateError, load_state, save_state
 
@@ -143,7 +145,7 @@ def _place_in_progress(state: ShotState, entry: dict, stage: str) -> None:
 
 def note_shot(shot: Path, text: str, stage: str, lessons: Path, drawings: list[str] = (),
               cards: list[dict] = (), scope: str = "shot", round_id: str | None = None,
-              source: str | None = None) -> tuple[ShotState, str]:
+              source: str | None = None, reviewer: str | None = None) -> tuple[ShotState, str]:
     """Send the shot back to a stage with the author's words, kept verbatim as a local lesson. drawings are paths
     relative to the shot; the next prompt of that stage lists them. scope is this shot (default) or every shot (a
     rule). round_id is the round the note is about (default: the latest). source "chat" is a note the author gave in
@@ -166,9 +168,14 @@ def note_shot(shot: Path, text: str, stage: str, lessons: Path, drawings: list[s
         raise SignOffError(str(e)) from e
     lessons = Path(lessons)
     lessons_new = not lessons.exists()
-    lesson = add_lesson(lessons, text, stage, scope)
+    held = same_lesson(lessons, text, stage, scope, shot)   # the same note again: its lesson is not written twice
+    lesson = add_lesson(lessons, text, stage, scope, shot)
     entry = {"stage": stage, "attempt": 0, "result": "note", "lesson": lesson, "misses": [text], "at": _now(),
              "scope": scope, **pass_mark(shot)}
+    if held is not None:
+        entry["lesson_held"] = True     # an earlier note wrote this lesson: --undo leaves it in the file
+    if reviewer:
+        entry["reviewer"] = reviewer     # a reviewer's note from a kei pack notes file, brought in by the author
     if chat:
         entry["from"] = CHAT
         entry["before"] = {k: getattr(state, k) for k in SNAPSHOT}    # what --undo puts back
@@ -191,6 +198,8 @@ def note_shot(shot: Path, text: str, stage: str, lessons: Path, drawings: list[s
         if state.status == "rejected":
             entry["reopened"] = True
         _send_back(state, stage)
+    if chat:
+        entry["sig"] = sign(entry)     # a running kei run merges a chat note only when this holds (kei.notesign)
     state.history.append(entry)
     save_state(shot, state)
     return state, lesson
@@ -210,6 +219,10 @@ def keep_chat_notes(shot: Path, state: ShotState) -> None:
     have = {_note_key(h) for h in state.history if h.get("result") == "note"}
     for h in disk.history:
         if h.get("result") != "note" or h.get("from") != CHAT or _note_key(h) in have:
+            continue
+        if not signed(h):
+            print(f"kei: a chat note in {Path(shot) / '.kei' / 'state.json'} is not signed by kei note, so it is "
+                  f"not taken as the author's: {(h.get('misses') or [''])[0][:80]!r}", file=sys.stderr)
             continue
         entry = dict(h)
         stage = entry.get("send_to") or entry["stage"]
@@ -247,7 +260,8 @@ def undo_note(shot: Path, lessons: Path, lesson: str | None = None) -> tuple[Sho
     if pass_mark(shot)["pass_sha"] != h.get("pass_sha"):
         raise SignOffError(f"a new pass was made after note {h['lesson']}: it cannot be undone; give a new note "
                            "instead")
-    remove_lesson(lessons, h["lesson"], created=bool(h.get("lessons_new")))
+    if not h.get("lesson_held"):
+        remove_lesson(lessons, h["lesson"], created=bool(h.get("lessons_new")))
     del state.history[i]
     if later:
         nxt = later[0]                       # its state before was this note's state after, which is gone now

@@ -14,22 +14,27 @@
 # --permission-mode acceptEdits lets it write the stage's files without asking; --add-dir .. lets it reach the
 # folder that holds the shot folder: GROWTH.md, and, in a character folder, the other shots' REFS.md drafts.
 # In -p mode acceptEdits alone refuses every shell command, and the stages need a few: kei render, kei bake,
-# kei check and kei pose, python for the animator's own measures, ffmpeg and ffprobe for videos. --allowedTools allows
+# kei check and kei pose, python for the animator's own helper scripts (only those in .kei/scratch/: no one-liners,
+# so every helper is kept and counted), ffmpeg and ffprobe for videos. --allowedTools allows
 # exactly those, in the Bash and the PowerShell tool (Claude Code on Windows may use either), and nothing else.
 # Kei puts its own scripts folder first on the seat's PATH, so "kei" and "python" are this Kei's.
 [animator]
-cmd = ["claude", "-p", "--output-format", "text", "--permission-mode", "acceptEdits", "--add-dir", "..",
+# model = "opus"     # the seat's model and effort, as fields (claude and codex seats); Kei adds the CLI's own flags
+# effort = "high"
+cmd = ["claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits", "--add-dir", "..",
        "--safe-mode", "--setting-sources", "project,local", "--strict-mcp-config", "--disable-slash-commands",
        "--allowedTools",
-       "Bash(kei *),Bash(python *),Bash(ffmpeg *),Bash(ffprobe *),PowerShell(kei *),PowerShell(python *),PowerShell(ffmpeg *),PowerShell(ffprobe *)"]
+       "Bash(kei *),Bash(python .kei/scratch/*),Bash(ffmpeg *),Bash(ffprobe *),PowerShell(kei *),PowerShell(python .kei/scratch/*),PowerShell(ffmpeg *),PowerShell(ffprobe *)"]
 timeout_s = 1800
 
 # Critic seats: a separate reviewer that never edits. Any agent CLI; several allowed; any send-back wins.
 # A run with no critic does not start: the agent that animates never reviews its own work.
 [[critics]]
 name = "claude-critic"
-cmd = ["claude", "-p", "--output-format", "text", "--permission-mode", "plan",
+cmd = ["claude", "-p", "--output-format", "json", "--permission-mode", "plan",
        "--safe-mode", "--setting-sources", "project,local", "--strict-mcp-config", "--disable-slash-commands"]
+# fallback_cmd = ["codex", "exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "-"]
+#   a stand-in that answers for this critic when it hits a usage limit, so the stage goes on
 
 [[critics]]
 name = "codex"
@@ -37,12 +42,24 @@ name = "codex"
 # rules, no saved session. Codex still lists the user's own skills (in ~/.codex/skills): no flag removes them.
 # -c windows.sandbox="unelevated": on Windows the read-only sandbox cannot start without it (it would ask for an
 # administrator set-up). The setting only matters on Windows.
-cmd = ["codex", "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
+cmd = ["codex", "exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
        "--ephemeral", "-c", 'windows.sandbox="unelevated"', "-"]
+
+# Web access: the seats may search the web and read pages to look for references (papers, and clips linked at a
+# timestamp, never downloaded). kei init asks once and writes the answer here; a kei.toml without it is asked at the
+# next kei run. on adds WebSearch and WebFetch to a Claude Code seat and --search to a Codex seat; off refuses both.
+# [seats]
+# web = "on"          # on | off
 
 [limits]
 max_attempts = 3      # tries per stage before the shot stops for a human
 max_send_backs = 3    # critic send-backs per stage before the shot stops for a human
+# on_send_back_limit = "stop"   # stop | retry (again from attempt 1, up to auto_retries) | advance (open notes to sign-off)
+# auto_retries = 2
+# retry_note = "..."            # what the animator reads on an automatic retry
+# [limits.passes]               # a stage's own limits, over the ones above (any stage: plan, blocking, passes...)
+# max_attempts = 5
+# max_send_backs = 5
 
 # The rule book. Each stage and each critic get only the rules of that stage.
 # [book]
@@ -67,6 +84,7 @@ character = "kei"
 [share]
 mode = "ask"          # ask | always | never | auto: what Kei does with new lessons when you accept a shot
 # repo = "castforge-ai/kei"   # where lessons go (owner/name); a studio names its own repository here
+# sign_off = "on"    # each shared lesson carries your Signed-off-by line (you agree to the DCO in CONTRIBUTING.md)
 
 # Where the keys live: Kei's own rig ("kei"), or Maya ("maya"; also kei run --app maya). With Maya open, a Maya
 # shot asks where to animate: in the open Maya (through the Kei host, see kei maya shelf) or in the background (Maya

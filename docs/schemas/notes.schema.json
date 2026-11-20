@@ -1,0 +1,50 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/castforge-ai/kei/blob/main/docs/schemas/notes.schema.json",
+ "title": "Kei reviewer notes (<shot>_notes.json)",
+ "description": "Saved from a kei pack page; kei note <shot> --from-file brings it in.",
+ "type": "object",
+ "required": [
+  "kei_notes",
+  "shot",
+  "pack",
+  "reviewer",
+  "notes"
+ ],
+ "properties": {
+  "kei_notes": {
+   "const": 1
+  },
+  "shot": {
+   "type": "string"
+  },
+  "pack": {
+   "type": "string"
+  },
+  "reviewer": {
+   "type": "string"
+  },
+  "saved": {
+   "type": "string"
+  },
+  "notes": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 200,
+   "items": {
+    "type": "object",
+    "required": [
+     "text"
+    ],
+    "properties": {
+     "text": {
+      "type": "string"
+     },
+     "frames": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ }
+}

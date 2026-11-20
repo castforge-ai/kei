@@ -1,0 +1,529 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/castforge-ai/kei/blob/main/docs/schemas/shot.schema.json",
+ "title": "Kei shot (out_<pass>/shot.json)",
+ "description": "A keyed shot on Kei's rig v4. A key may leave out any channel: it carries over from the key before. Kei refuses a shot it cannot play with a message (kei check).",
+ "type": "object",
+ "required": [
+  "rig",
+  "frames",
+  "keys"
+ ],
+ "properties": {
+  "rig": {
+   "const": "v4"
+  },
+  "fps": {
+   "type": "number",
+   "exclusiveMinimum": 0
+  },
+  "frames": {
+   "type": "integer",
+   "minimum": 1
+  },
+  "loop": {
+   "type": "boolean"
+  },
+  "in_place": {
+   "type": "boolean"
+  },
+  "tangents": {
+   "enum": [
+    "clamped",
+    "free"
+   ]
+  },
+  "character": {
+   "type": "string"
+  },
+  "props": {
+   "type": "object",
+   "description": "the character's proportions"
+  },
+  "note": {
+   "type": "string"
+  },
+  "keys": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "type": "object",
+    "required": [
+     "f"
+    ],
+    "properties": {
+     "root": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0.98, 0]"
+     },
+     "yaw": {
+      "type": "number",
+      "description": "the default stand is 0"
+     },
+     "pelvis": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "1 to 2 numbers (the rest carry over); the default stand is [0, 0]"
+     },
+     "spine": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0.05, 0, 0]"
+     },
+     "spine1": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0, 0]"
+     },
+     "spine2": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0, 0]"
+     },
+     "spine3": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0, 0]"
+     },
+     "spine4": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0, 0]"
+     },
+     "spine5": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0, 0]"
+     },
+     "sq": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "a length scale; the default stand is 1"
+     },
+     "neckS": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "a length scale; the default stand is 1"
+     },
+     "armSL": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "a length scale; the default stand is 1"
+     },
+     "armSR": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "a length scale; the default stand is 1"
+     },
+     "legSL": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "a length scale; the default stand is 1"
+     },
+     "legSR": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "a length scale; the default stand is 1"
+     },
+     "neck": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0, 0]"
+     },
+     "head": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0.1, 0, 0]"
+     },
+     "clavL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "1 to 2 numbers (the rest carry over); the default stand is [0, 0]"
+     },
+     "clavR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "1 to 2 numbers (the rest carry over); the default stand is [0, 0]"
+     },
+     "armL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0.05, 0.12, 0]"
+     },
+     "armR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0.05, 0.12, 0]"
+     },
+     "elbowL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "1 to 2 numbers (the rest carry over); the default stand is [0.15, 0]"
+     },
+     "elbowR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "1 to 2 numbers (the rest carry over); the default stand is [0.15, 0]"
+     },
+     "handL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "1 to 2 numbers (the rest carry over); the default stand is [0, 0]"
+     },
+     "handR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "1 to 2 numbers (the rest carry over); the default stand is [0, 0]"
+     },
+     "footL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 5,
+      "description": "1 to 5 numbers (the rest carry over); the default stand is [-0.1, 0.08, 0, 0, 0]"
+     },
+     "footR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 5,
+      "description": "1 to 5 numbers (the rest carry over); the default stand is [0.1, 0.08, 0, 0, 0]"
+     },
+     "rollL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0, 0.6]"
+     },
+     "rollR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "1 to 3 numbers (the rest carry over); the default stand is [0, 0, 0.6]"
+     },
+     "toeL": {
+      "type": "number",
+      "description": "the default stand is 0"
+     },
+     "toeR": {
+      "type": "number",
+      "description": "the default stand is 0"
+     },
+     "kneeL": {
+      "type": "number",
+      "description": "the default stand is 0"
+     },
+     "kneeR": {
+      "type": "number",
+      "description": "the default stand is 0"
+     },
+     "ikL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 4,
+      "description": "1 to 4 numbers (the rest carry over); the default stand is [0, 0, 0, 0]"
+     },
+     "ikR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 4,
+      "description": "1 to 4 numbers (the rest carry over); the default stand is [0, 0, 0, 0]"
+     },
+     "gripR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "1 to 2 numbers (the rest carry over); the default stand is [0, 0]"
+     },
+     "bladeS": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "a length scale; the default stand is 1"
+     },
+     "fingersL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "1 to 10 numbers (the rest carry over); the default stand is [0.35, 0.35, 1.25, 0.0, 1.4, 0.0, 1.5, 0.0, 1.6, 0.0]"
+     },
+     "fingersR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "1 to 10 numbers (the rest carry over); the default stand is [0.35, 0.35, 1.25, 0.0, 1.4, 0.0, 1.5, 0.0, 1.6, 0.0]"
+     },
+     "poleL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 4,
+      "description": "1 to 4 numbers (the rest carry over); the default stand is [0, 0, 0, 0]"
+     },
+     "poleR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 4,
+      "description": "1 to 4 numbers (the rest carry over); the default stand is [0, 0, 0, 0]"
+     },
+     "legFKL": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 5,
+      "description": "1 to 5 numbers (the rest carry over); the default stand is [0, 0, 0, 0, 0]"
+     },
+     "legFKR": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 5,
+      "description": "1 to 5 numbers (the rest carry over); the default stand is [0, 0, 0, 0, 0]"
+     },
+     "f": {
+      "type": "number",
+      "description": "the frame of the key"
+     },
+     "name": {
+      "type": "string"
+     },
+     "note": {
+      "type": "string"
+     },
+     "tangent": {
+      "enum": [
+       "auto",
+       "flat"
+      ],
+      "description": "auto (default) or flat"
+     },
+     "function": {
+      "type": "string",
+      "description": "the pose function: contact, down, up, passing..."
+     },
+     "kind": {
+      "type": "string",
+      "description": "key, extreme or breakdown"
+     }
+    },
+    "additionalProperties": false
+   }
+  },
+  "objects": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": [
+     "name",
+     "shape",
+     "size",
+     "rest"
+    ],
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "shape": {
+      "enum": [
+       "box",
+       "cylinder",
+       "sphere"
+      ]
+     },
+     "size": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "box: width, height, depth; cylinder: diameter, height; sphere: diameter. Metres."
+     },
+     "rest": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "the centre on frame 0"
+     },
+     "mass_kg": {
+      "type": "number",
+      "minimum": 0
+     },
+     "colour": {
+      "type": "string"
+     },
+     "yaw_deg": {
+      "type": "number"
+     },
+     "turn": {
+      "enum": [
+       "none",
+       "hands"
+      ]
+     },
+     "attach": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "required": [
+        "f",
+        "to"
+       ],
+       "properties": {
+        "f": {
+         "type": "number"
+        },
+        "to": {
+         "enum": [
+          "hand_l",
+          "hand_r",
+          "hands",
+          "floor"
+         ]
+        }
+       }
+      }
+     },
+     "path": {
+      "type": "array",
+      "description": "the object's own keys: {f, pos [x, y, z], yaw_deg}",
+      "items": {
+       "type": "object",
+       "required": [
+        "f"
+       ]
+      }
+     },
+     "grip": {
+      "type": "object",
+      "description": "each hand's point on the object, in its own space",
+      "patternProperties": {
+       "^[lr]$": {
+        "type": "array",
+        "items": {
+         "type": "number"
+        },
+        "minItems": 3,
+        "maxItems": 3
+       }
+      },
+      "additionalProperties": false
+     }
+    }
+   }
+  },
+  "performers": {
+   "type": "array",
+   "description": "Unreal shots only: other characters in the level"
+  }
+ }
+}

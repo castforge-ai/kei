@@ -7,6 +7,9 @@ What is measured, frame by frame, on the pass's shot.json baked on the shot's ch
                 point stays higher than HOVER. A foot raised off the ground everywhere (a re-imported model with a
                 shorter ankle) is never in contact, so the contacts check alone cannot see it.
   foot_slide    how far a sole point that stays in contact moves along the ground from one frame to the next.
+  contact timing  each foot's share of the weight (the centre of mass on the ground, between the planted feet): a
+                foot that lifts while it still carries over LIFT_SHARE, or takes over LAND_SHARE on the frame it lands
+                (the weight arrives after the foot), is a soft flag (CNT7, CNT9, CNT10).
   balance       the centre of mass, dropped to the ground, against the support: the outline of the sole points in
                 contact. A frame with no contact is airborne and is not judged.
   joint_ranges  knee and elbow bend against their limits, a knee that bends backward, and a foot target the leg
@@ -14,7 +17,10 @@ What is measured, frame by frame, on the pass's shot.json baked on the shot's ch
   knee_snap     a knee whose bend drops (or jumps) by more than KNEE_SNAP from both neighbour frames and comes back:
                 a one-frame pop, such as a contact key snapping the leg straight.
   arcs          the paths of the head, the pelvis, the hand tips and the toe tips: a sharp change of direction while
-                the part is moving (a kink) breaks the arc.
+                the part is moving (a kink) breaks the arc. On a spline pass, kei.arc_check adds spacing pops and
+                wobble, on more parts and against the chest too.
+  objects       each object of the shot (kei.objects): under the ground, floating when nothing holds it, or taken by
+                a hand from a distance. Hard rules.
 
 An in-place loop (shot.json "in_place": {"speed_mps": v}, Kei's default for a loop) is measured as it plays in the
 game: the ground under it moves back at v, so each frame's joints move forward by v x f / fps along the character's
@@ -167,6 +173,43 @@ def knee_snaps(bend: list[float], frames: list[int], loop: bool = False,
     return out
 
 
+LIFT_SHARE = 0.5     # a foot still carrying over half the weight on the frame before it lifts (the approved walk: 38%)
+LAND_SHARE = 0.75    # a foot taking more than this share on the frame it lands: the weight did not arrive after it
+
+
+def weight_share(joints: dict, contact_h: float) -> dict:
+    """Each foot's share of the weight on one frame: the centre of mass on the ground, between the planted feet. A
+    lone planted foot carries it all; a foot in the air carries none; no foot down gives an empty dict."""
+    feet = {}
+    for s in "lr":
+        pts = [joints[p.format(s=s)] for p in SOLE if joints[p.format(s=s)][1] <= contact_h]
+        if pts:
+            feet[s] = (sum(p[0] for p in pts) / len(pts), sum(p[2] for p in pts) / len(pts))
+    if len(feet) < 2:
+        return {s: 1.0 for s in feet}
+    (lx, lz), (rx, rz) = feet["l"], feet["r"]
+    cx, cz = joints["com"][0], joints["com"][2]
+    dx, dz = rx - lx, rz - lz
+    span = dx * dx + dz * dz
+    t = 0.5 if span < 1e-9 else max(0.0, min(1.0, ((cx - lx) * dx + (cz - lz) * dz) / span))
+    return {"l": 1.0 - t, "r": t}
+
+
+def contact_timing(frames: list[dict], contact_h: float) -> dict:
+    """The lifts and landings whose weight timing is off: {"lifts": [(side, f, share before)], "lands": [(side, f,
+    share)], "shares": [per frame {side: share}]}. A lift is judged on the frame before it, a landing on its frame."""
+    shares = [weight_share(fr["joints"], contact_h) for fr in frames]
+    lifts, lands = [], []
+    for i in range(1, len(frames)):
+        for s in "lr":
+            was, now = s in shares[i - 1], s in shares[i]
+            if was and not now and len(shares[i - 1]) == 2 and shares[i - 1][s] > LIFT_SHARE:
+                lifts.append((s, frames[i]["f"], shares[i - 1][s]))
+            if now and not was and len(shares[i]) == 2 and shares[i][s] > LAND_SHARE:
+                lands.append((s, frames[i]["f"], shares[i][s]))
+    return {"lifts": lifts, "lands": lands, "shares": shares}
+
+
 def _frames(shot: dict, mode: str, proportions: dict) -> list[dict]:
     """Frames 0..n, each {"f", "pose", "joints"}. On a travelling loop the last frame is frame 0 moved on by one
     cycle, so the seam is measured as the motion plays, not as a jump back."""
@@ -201,7 +244,8 @@ def _treadmill(frames: list[dict], speed: float, fps: float) -> list[dict]:
     return out
 
 
-def measure(shot: dict, mode: str, proportions: dict, height: float, frames: list[dict] | None = None) -> dict:
+def measure(shot: dict, mode: str, proportions: dict, height: float, frames: list[dict] | None = None,
+            body_kg: float | None = None) -> dict:
     """The report of one pass (see the module docstring). frames: joints from elsewhere (Maya), in place of the
     shot baked on Kei's own rig; they have no pose, so the reach check (a foot target past the leg) is not run."""
     k = height / CHARACTER_BASE
@@ -211,6 +255,11 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
     speed = in_place_speed(shot)
     if speed:
         frames = _treadmill(frames, speed, float(shot.get("fps") or 24))
+    from kei.objects import ObjectError, body_mass, with_loads
+    try:   # a held object's mass in the centre of mass; a grounded object the hands press on as support
+        frames = with_loads(shot, frames, body_kg or body_mass(None, height), k)
+    except ObjectError as e:
+        raise CheckError(str(e)) from None
     flags: list[dict] = []
     thresholds = {
         "contact_h_m": {"value": round(contact_h, 4), "source": f"CONTACT_H {CONTACT_H} m x height {height} / 1.71"},
@@ -226,6 +275,8 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
         "reach_m": {"value": REACH, "source": "REACH"},
         "knee_snap_deg": {"value": KNEE_SNAP, "source": "KNEE_SNAP (a one-frame dip or spike of the knee bend)"},
         "arc_kink_deg": {"value": ARC_KINK, "source": "ARC_KINK"},
+        "lift_share": {"value": LIFT_SHARE, "source": "LIFT_SHARE (CNT10: the weight leaves a foot before it lifts)"},
+        "land_share": {"value": LAND_SHARE, "source": "LAND_SHARE (CNT7: the weight arrives after the foot lands)"},
         "arc_moving_m_per_frame": {"value": round(ARC_MOVING * k, 4),
                                    "source": f"ARC_MOVING {ARC_MOVING} m x height / 1.71"},
     }
@@ -265,12 +316,26 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
                           "what": f"the planted {s} foot slides along the ground (up to {top:.3f} m a frame, "
                                   f"over {slide:.3f})"})
 
+    # contact timing: the weight leaves a foot before it lifts (CNT10) and arrives after it lands (CNT7, CNT9)
+    timing = contact_timing(frames, contact_h)
+    for side, f, share in timing["lifts"]:
+        flags.append({"check": "contact_timing", "side": side, "frames": [f, f], "measure": "lift_share",
+                      "value": round(share, 2),
+                      "what": f"the {side} foot lifts on f{f} while it still carries {share:.0%} of the weight: "
+                              f"shift the weight onto the other foot first, then lift"})
+    for side, f, share in timing["lands"]:
+        flags.append({"check": "contact_timing", "side": side, "frames": [f, f], "measure": "land_share",
+                      "value": round(share, 2),
+                      "what": f"the {side} foot takes {share:.0%} of the weight on the frame it lands (f{f}): the "
+                              f"foot lands first and the weight arrives after"})
+
     # balance
     out_frames, airborne, worst = [], [], {}
     for fr, pts in zip(frames, sole_in):
         if not pts:
             airborne.append(fr["f"])
             continue
+        pts = pts + list(fr.get("support_extra", []))
         c = fr["joints"]["com"]
         d = outside((c[0], c[2]), _hull(pts))
         if d > tol:
@@ -401,10 +466,37 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
             flags.append({"check": "arcs", "part": part, "frames": [f, f], "measure": "arc_kink_deg", "value": round(t, 1),
                           "what": f"the {part} path turns {t:.0f} deg at once while moving: the arc breaks"})
 
+    # arcs as a person sees them: spacing pops and wobble, in the world and against the chest (kei.arc_check)
+    if mode != "step":
+        from kei.arc_check import arc_flags
+        flags += arc_flags(frames, k)
+        from kei.motion_check import motion_flags   # jolts and arm targets out of reach (kei.motion_check)
+        flags += motion_flags(frames, float(shot.get("fps") or 24), k)
+
+    # objects the character handles (kei.objects): under the ground, floating, taken from a distance; hard rules
+    from kei.objects import GRAB, HOVER as OBJ_HOVER, ObjectError, object_flags, object_report
+    try:
+        flags += object_flags(shot, frames, k)
+        from kei.objects import grip_flags
+        flags += grip_flags(shot, frames, k)
+        from kei.weight_rules import weight_flags      # the book's heavy-lift rules, on a held heavy load
+        flags += weight_flags(shot, frames, k, contact_h)
+        objects = object_report(shot, frames)
+    except ObjectError as e:
+        raise CheckError(str(e)) from None
+    if objects:
+        thresholds["object_hover_m"] = {"value": round(OBJ_HOVER * k, 4), "source": f"kei.objects HOVER {OBJ_HOVER} m x height / 1.71"}
+        thresholds["object_grab_m"] = {"value": round(GRAB * k, 4), "source": f"kei.objects GRAB {GRAB} m x height / 1.71"}
+
     flags.sort(key=lambda fl: (fl["frames"][0], fl["check"]))
     return {"contacts": contacts, "foot_slide": {"slides": slides, "max_m_per_frame": max_slide},
             "balance": balance, "joint_ranges": joint_ranges, "arcs": arcs, "thresholds": thresholds,
-            "flags": flags}
+            **({"objects": objects} if objects else {}), "flags": flags}
+
+
+def _body_kg(shot_dir: Path, height: float) -> float:
+    from kei.objects import body_mass
+    return body_mass(shot_dir, height)
 
 
 def check_pass(shot_dir: Path, pass_name: str, character: str, mode: str | None = None) -> Path:
@@ -429,9 +521,16 @@ def check_pass(shot_dir: Path, pass_name: str, character: str, mode: str | None 
     report = {"tool": "kei check", "pass": pass_name, "mode": mode, "character": ch.name,
               "fps": shot.get("fps") or 24, "frames": shot.get("frames") or len(frames or []) - 1,
               "loop": bool(shot.get("loop")), **({"in_place_speed_mps": in_place_speed(shot)} if in_place_speed(shot) else {}), **({"joints_from": data.get("source")} if frames else {}),
-              **measure(shot, mode, ch.proportions, ch.height, frames)}
-    from kei.style import apply, load_style, register
-    report["style"] = apply(report["flags"], load_style(Path(shot_dir)), register(Path(shot_dir)))
+              **measure(shot, mode, ch.proportions, ch.height, frames, _body_kg(shot_dir, ch.height))}
+    if frames is None:      # the body's mesh against the objects (a baked pass: Maya's joints carry no pose)
+        from kei.objects import ObjectError as _OE, mesh_flags
+        try:
+            report["flags"] += mesh_flags(shot, _frames(shot, mode, ch.proportions), ch, ch.height / CHARACTER_BASE)
+        except _OE as e:
+            raise CheckError(str(e)) from None
+    from kei.style import apply, load_style, pushed_ranges, register
+    report["style"] = apply(report["flags"], load_style(Path(shot_dir)), register(Path(shot_dir)),
+                            pushed_ranges(Path(shot_dir)))
     faults = report["style"]["faults"]
     notes = report["style"]["notes"]
     report["summary"] = ((f"{faults} flag(s): fix each at a key, or declare it with a reason" if faults else

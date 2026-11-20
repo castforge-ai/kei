@@ -10,9 +10,10 @@ is always allowed. Every later stage gets the principles plus these subjects.
 Ask the author for the register of the shot, and write their answer on a line "Register: realistic", "Register:
 stylized" or "Register: pushed" in PLAN.md. Never guess it: with no answer, leave the line out (Kei then judges as
 realistic). Realistic keeps the body checks' realism rules; stylized judges them against the character's own clips;
-pushed makes every soft body flag (balance, trunk lean, knee and elbow range, arc kinks, a wide stance, a neck bend, a
-straight arm) a note, never a fault. Hard flags stay faults in every register: contacts, hover, foot slide, a knee
-bending backward, reach, a knee snap, locked knees.
+pushed makes the soft body flags (balance, trunk lean, knee and elbow range, arc kinks, a wide stance, a neck bend, a
+straight arm) notes, never faults. When the author pushes only some beats, name them on the same line, such as "Register:
+pushed f61-120, f150-167": the rest of the shot is judged as realistic. Spacing pops, wobble and jolts stay faults
+in every register, and so do the hard flags: contacts, hover, foot slide, a knee bending backward, reach, a knee snap, locked knees.
 For a character with clips of their own in the Unreal project, name the clips most like this shot in PLAN.md on a
 line "Style clips: <asset path>, <asset path>", and run `kei unreal style <shot> --anim <path> [--anim <path> ...]`.
 It writes rig/style.json: how far each soft check goes in their own animation. A soft flag inside that range is a

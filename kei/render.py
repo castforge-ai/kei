@@ -55,7 +55,9 @@ def _num(v) -> bool:
 
 
 SENSOR = (36.0, 20.25)   # mm: a full-frame sensor cropped to 16:9, when the plan's camera names no sensor
-CAMERA_KEYS = ("yaw_deg", "pitch_deg", "target_m", "span_m", "lens_mm", "distance_m", "sensor_mm", "aspect", "follow")
+CAMERA_KEYS = ("yaw_deg", "pitch_deg", "target_m", "span_m", "lens_mm", "distance_m", "sensor_mm", "aspect", "follow",
+               "keys")
+CAMERA_KEY_FIELDS = ("f", "cut", "yaw_deg", "pitch_deg", "target_m", "span_m", "lens_mm", "distance_m", "sensor_mm")
 
 
 @dataclass(frozen=True)
@@ -72,9 +74,32 @@ class Camera:
     aspect: float = 16 / 9
     distance: float | None = None
     follow: bool = False
+    yaw_deg: float = 0.0
+    pitch_deg: float = 0.0
+    keys: tuple = ()        # ((f, Camera, cut), ...): an animated camera; empty for a locked one
 
     def __str__(self) -> str:
         return "delivery"
+
+    def at(self, f: float) -> "Camera":
+        """The camera on frame f. Between two keys it eases (smoothstep) from one setup to the next, unless the later
+        key is a cut: then the earlier setup holds until the cut frame, and the new one starts there."""
+        if not self.keys:
+            return self
+        ks = self.keys
+        if f <= ks[0][0]:
+            return ks[0][1]
+        for (f0, c0, _), (f1, c1, cut) in zip(ks, ks[1:]):
+            if f0 <= f < f1:
+                if cut:
+                    return c0
+                t = (f - f0) / (f1 - f0)
+                t = t * t * (3 - 2 * t)
+                return _blend(c0, c1, t)
+        return ks[-1][1]
+
+    def cuts(self) -> list[int]:
+        return [int(f) for f, _, cut in self.keys if cut]
 
     def project(self, p) -> tuple[float, float]:
         rel = tuple(p[i] - self.target[i] for i in range(3))
@@ -137,13 +162,62 @@ class Camera:
         follow = d.get("follow", False)
         if not isinstance(follow, bool):
             raise bad("follow", "must be true or false")
-        y, p = math.radians(yaw), math.radians(pitch)
-        cam = (math.cos(p) * math.cos(y), math.sin(p), math.cos(p) * math.sin(y))
-        right = (-math.sin(y), 0.0, math.cos(y))
-        up = (right[1] * cam[2] - right[2] * cam[1], right[2] * cam[0] - right[0] * cam[2],
-              right[0] * cam[1] - right[1] * cam[0])
-        return Camera(cam, right, up, tuple(float(t) for t in target), float(span), float(aspect),
-                      float(dist) if dist else None, follow)
+        base = _build(yaw, pitch, target, span, aspect, dist, follow)
+        keys = d.get("keys")
+        if keys is None:
+            return base
+        if not (isinstance(keys, list) and keys):
+            raise bad("keys", "must be a list of camera keys, each with a frame f")
+        plain = {k: v for k, v in d.items() if k not in ("keys", "lens_mm", "distance_m", "span_m")}
+        out, last = [], None
+        for i, k in enumerate(keys):
+            where = f"keys[{i}]"
+            if not isinstance(k, dict):
+                raise bad(where, "must be an object")
+            extra = [x for x in k if x not in CAMERA_KEY_FIELDS and x != "name" and not x.endswith("note")]
+            if extra:
+                raise bad(f"{where} {', '.join(extra)}", f"is not a camera key setting; a key sets {', '.join(CAMERA_KEY_FIELDS)}")
+            f = k.get("f")
+            if not (isinstance(f, int) and not isinstance(f, bool) and f >= 0):
+                raise bad(f"{where} f", "must be a whole frame number of 0 or more")
+            if last is not None and f <= last:
+                raise bad(f"{where} f", f"must come after the key before (f {last})")
+            cut = k.get("cut", False)
+            if not isinstance(cut, bool):
+                raise bad(f"{where} cut", "must be true or false")
+            lens_keys = ("lens_mm", "distance_m", "span_m", "sensor_mm")
+            own = {x: k[x] for x in lens_keys if x in k}
+            lensing = {x: d[x] for x in lens_keys if x in d}
+            if "span_m" in own:                       # the key frames by height: no lens carries over
+                lensing = own
+            elif own:                                 # a zoom or a dolly: the key's lens or distance over the plan's
+                lensing = {**{x: v for x, v in lensing.items() if x != "span_m"}, **own}
+            merged = {**plain, **{x: v for x, v in k.items() if x not in ("f", "cut", *lensing)}, **lensing}
+            out.append((f, Camera.from_plan(merged), cut))
+            last = f
+        if (base.distance is None) != (out[0][1].distance is None) or any(
+                (c.distance is None) != (out[0][1].distance is None) for _, c, _ in out):
+            raise bad("keys", "must all use a lens (lens_mm and distance_m) or all use span_m, not a mix")
+        return replace(base, keys=tuple(out))
+
+
+def _build(yaw, pitch, target, span, aspect, dist, follow) -> Camera:
+    y, p = math.radians(yaw), math.radians(pitch)
+    cam = (math.cos(p) * math.cos(y), math.sin(p), math.cos(p) * math.sin(y))
+    right = (-math.sin(y), 0.0, math.cos(y))
+    up = (right[1] * cam[2] - right[2] * cam[1], right[2] * cam[0] - right[0] * cam[2],
+          right[0] * cam[1] - right[1] * cam[0])
+    return Camera(cam, right, up, tuple(float(t) for t in target), float(span), float(aspect),
+                  float(dist) if dist else None, follow, float(yaw), float(pitch))
+
+
+def _blend(a: Camera, b: Camera, t: float) -> Camera:
+    """A camera t of the way from a to b: yaw the short way round, the rest straight."""
+    dy = (b.yaw_deg - a.yaw_deg + 180) % 360 - 180
+    mix = lambda x, y: x + (y - x) * t    # noqa: E731
+    dist = mix(a.distance, b.distance) if a.distance and b.distance else None
+    return _build(a.yaw_deg + dy * t, mix(a.pitch_deg, b.pitch_deg), [mix(x, y) for x, y in zip(a.target, b.target)],
+                  mix(a.span, b.span), a.aspect, dist, a.follow)
 
 
 def _basis(view) -> tuple:
@@ -325,17 +399,18 @@ def _draw_one(cv: _Canvas, to_px, joints: dict, colours: dict) -> None:
         cv.disk(*to_px(joints["com"]), 3, COM)
 
 
-def _panel(cv: _Canvas, ox: int, oy: int, view: str, joints: dict, bounds: dict, size: int, label: str) -> None:
+def _panel(cv: _Canvas, ox: int, oy: int, view: str, joints: dict, bounds: dict, size: int, label: str,
+           edges=()) -> None:
     """One view in the panel at (ox, oy). Nothing drawn here leaves the panel."""
     saved, cv.clip = cv.clip, (ox, oy, ox + size, oy + size)
     try:
-        _panel_inside(cv, ox, oy, view, joints, bounds, size, label)
+        _panel_inside(cv, ox, oy, view, joints, bounds, size, label, edges)
     finally:
         cv.clip = saved
 
 
 def _panel_inside(cv: _Canvas, ox: int, oy: int, view: str, joints: dict, bounds: dict, size: int,
-                  label: str) -> None:
+                  label: str, edges=()) -> None:
     cv.box(ox, oy, ox + size - 1, oy + size - 1, BORDER)
 
     def to_px(p):
@@ -362,13 +437,15 @@ def _panel_inside(cv: _Canvas, ox: int, oy: int, view: str, joints: dict, bounds
                 x, y = _px(view, h, v, bounds, size)
                 cv.line(ox + x - 1, oy + y, ox + x + 1, oy + y, GROUND, False)
                 cv.line(ox + x, oy + y - 1, ox + x, oy + y + 1, GROUND, False)
+    for a, b, colour in edges:      # the shot's objects, as outlines, behind the figure
+        cv.line(*to_px(a), *to_px(b), colour, False)
     draw_figure(cv, to_px, joints)
     cv.text(ox + 4, oy + 3, f"{view} {label}".strip(), TEXT, size - 8)
 
 
-def _views_on(cv: _Canvas, ox: int, oy: int, joints: dict, size: int, bounds: dict, label: str) -> None:
+def _views_on(cv: _Canvas, ox: int, oy: int, joints: dict, size: int, bounds: dict, label: str, edges=()) -> None:
     for i, view in enumerate(VIEWS):
-        _panel(cv, ox + (i % 2) * size, oy + (i // 2) * size, view, joints, bounds, size, label)
+        _panel(cv, ox + (i % 2) * size, oy + (i // 2) * size, view, joints, bounds, size, label, edges)
 
 
 def draw_views(joints: dict, size: int = 360, bounds: dict | None = None, label: str = "") -> bytes:
@@ -619,10 +696,12 @@ SHADOW_LIFT = 0.06            # metres: a sole this high casts no shadow
 
 
 def _contact_shadows(cv: _Canvas, ox: int, oy: int, parts, to_px) -> None:
-    """A soft ellipse on the ground under each foot, darkest when the foot is planted and gone when it is
-    SHADOW_LIFT above the ground, so a figure seen from above does not float. Drawn before the figure."""
-    for side in "lr":
-        pts = [v for p in parts if p.bone in (f"foot_{side}", f"ball_{side}") for v in p.verts]
+    """A soft ellipse on the ground under each foot and each object, darkest on the ground and gone SHADOW_LIFT above
+    it, so a figure or a crate seen from above does not float. Drawn before the figure."""
+    groups = [[v for p in parts if p.bone in (f"foot_{side}", f"ball_{side}") for v in p.verts] for side in "lr"]
+    objects = sorted({p.bone for p in parts if p.bone.startswith("object:")})
+    groups += [[v for p in parts if p.bone == b for v in p.verts] for b in objects]   # objects cast one too
+    for pts in groups:
         if not pts:
             continue
         k = 1.0 - min(p[1] for p in pts) / SHADOW_LIFT
@@ -716,6 +795,20 @@ def _character_panel(cv: _Canvas, ox: int, oy: int, view, ch, parts, bounds: dic
 def _character_parts(ch, pose: dict):
     from kei.characters.mesh import pose_mesh
     return pose_mesh(ch, pose)
+
+
+def with_objects(ch, shot: dict, frames: list[dict], parts: list):
+    """The character with the shot's object colours added, and each frame's parts with the objects at their place
+    on that frame (kei.objects). A shot with no objects comes back unchanged."""
+    from kei.objects import ObjectError, materials, object_parts
+    try:
+        mats = materials(shot)
+        if not mats:
+            return ch, parts
+        extra = object_parts(shot, frames)
+    except ObjectError as e:
+        raise ShotError(str(e)) from None
+    return replace(ch, materials={**ch.materials, **mats}), [p + e for p, e in zip(parts, extra)]
 
 
 def _load(character):
@@ -910,13 +1003,15 @@ def _character_frames(shot: dict, mode: str, character, size: int, emission: flo
     shot = on_character(shot, ch)
     frames = bake(shot, mode)
     parts = [_character_parts(ch, fr["pose"]) for fr in frames]
+    ch, parts = with_objects(ch, shot, frames, parts)
     line = travel_line(shot, frames)
     cycle, unit = _cycle(shot, line)
     ticks = ((line[0][0], line[0][2]), unit, stride_tick(cycle))
     views = CHARACTER_VIEWS
     if isinstance(camera, Camera):
         views = None
-        cams = [camera.moved(p[0] - line[0][0], p[2] - line[0][2]) if camera.follow else camera for p in line]
+        cams = [camera.at(i).moved(p[0] - line[0][0], p[2] - line[0][2]) if camera.follow else camera.at(i)
+                for i, p in enumerate(line)]
 
         def frame_bounds(f: int, panel: int) -> dict:
             c = cams[f]
@@ -942,12 +1037,137 @@ def _character_frames(shot: dict, mode: str, character, size: int, emission: flo
         for i, view in enumerate(views):
             _character_panel(cv, i * panel, 0, view, ch, parts[f], bounds[f], panel, text, emission, overlay)
         return cv
+
+    look = _character_look(character, ch)
+
+    def key(f: int, label: str, panel: int) -> str:
+        """Everything frame f's pixels depend on: when it is unchanged, the frame drawn before is reused."""
+        where = repr(cams[f]) if views is None else repr(bounds[f])
+        return _digest(look, emission, overlay, views, frames[f]["pose"], shot.get("objects"), f, where, label, panel)
+    draw.key = key
     return frames, draw
+
+
+def read_png(data: bytes) -> _Canvas | None:
+    """A PNG read back into a canvas: 8-bit RGB, not interlaced, as Kei writes them. Anything else gives None, and
+    the frame is simply drawn again."""
+    import zlib
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    i, idat, w = 8, [], None
+    while i + 8 <= len(data):
+        n, kind = struct.unpack(">I", data[i:i + 4])[0], data[i + 4:i + 8]
+        body = data[i + 8:i + 8 + n]
+        if kind == b"IHDR":
+            w, h, depth, colour, _, _, interlace = struct.unpack(">IIBBBBB", body)
+            if depth != 8 or colour != 2 or interlace:
+                return None
+        elif kind == b"IDAT":
+            idat.append(body)
+        i += 12 + n
+    if w is None:
+        return None
+    try:
+        raw = zlib.decompress(b"".join(idat))
+    except zlib.error:
+        return None
+    stride = w * 3
+    if len(raw) != h * (stride + 1):
+        return None
+    cv = _Canvas(w, h)
+    prev = bytearray(stride)
+    for y in range(h):
+        kind, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        if kind == 1:
+            for x in range(3, stride):
+                line[x] = (line[x] + line[x - 3]) & 255
+        elif kind == 2:
+            for x in range(stride):
+                line[x] = (line[x] + prev[x]) & 255
+        elif kind == 3:
+            for x in range(stride):
+                line[x] = (line[x] + ((line[x - 3] if x >= 3 else 0) + prev[x]) // 2) & 255
+        elif kind == 4:
+            for x in range(stride):
+                a, b, c = (line[x - 3] if x >= 3 else 0), prev[x], (prev[x - 3] if x >= 3 else 0)
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        elif kind != 0:
+            return None
+        cv.px[y * stride:(y + 1) * stride] = line
+        prev = line
+    return cv
+
+
+def _code_digest() -> str:
+    """The drawing code itself: a change to it redraws every frame."""
+    import hashlib
+    here = Path(__file__).resolve().parent
+    h = hashlib.sha256()
+    for rel in ("render.py", "sheet.py", "objects.py", "characters/mesh.py", "characters/texture.py",
+                "characters/profile.py", "characters/__init__.py", "characters/imported.py"):
+        p = here / rel
+        if p.is_file():
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _character_look(character, ch) -> str:
+    """The character's definition and, for an imported one, the files of its folder (mesh, textures)."""
+    files = []
+    folder = getattr(ch, "folder", None)
+    if folder and Path(folder).is_dir():
+        files = sorted((p.relative_to(folder).as_posix(), p.stat().st_size, p.stat().st_mtime_ns)
+                       for p in Path(folder).rglob("*") if p.is_file())
+    try:
+        from kei.characters import raw
+        data = raw(ch.name)
+    except Exception:   # noqa: BLE001  a character given as an object: its fields stand for it
+        data = repr(sorted(vars(ch).items(), key=lambda kv: kv[0]))
+    return _digest(_code_digest(), data, files)
+
+
+def _digest(*parts) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(parts, sort_keys=True, default=repr).encode("utf-8")).hexdigest()
+
+
+PARALLEL_MIN = 24     # frames: a shorter render is drawn in one process
+
+
+def _workers(asked: int | None, n_frames: int, by_name) -> int:
+    """How many processes draw the frames: --workers, else KEI_RENDER_WORKERS, else half the cores (at most 8). A
+    character given as an object (not a name) or a short render stays in this process; without ffmpeg too, since the
+    GIF fallback needs every frame in memory."""
+    import os
+    if not by_name or n_frames < PARALLEL_MIN or not shutil.which("ffmpeg"):
+        return 1
+    if asked is None:
+        env = os.environ.get("KEI_RENDER_WORKERS")
+        asked = int(env) if env and env.isdigit() else max(1, min(8, (os.cpu_count() or 2) // 2))
+    return max(1, min(asked, n_frames // 4))
+
+
+def _by_name(character):
+    """The name a worker process loads the character by, or None (the stick figure, or no name)."""
+    if isinstance(character, str):
+        return character
+    return getattr(character, "name", None) or None
+
+
+def _in_parallel(fn, n: int, frames: list[int], kw: dict) -> None:
+    """Draw the frames in n processes, each a strided share, through fn(**kw, _only=share)."""
+    from concurrent.futures import ProcessPoolExecutor
+    shares = [tuple(frames[i::n]) for i in range(n)]
+    with ProcessPoolExecutor(max_workers=n) as pool:
+        for f in [pool.submit(fn, **kw, _only=share) for share in shares]:
+            f.result()
 
 
 def render_shot(shot_path: Path, out_dir: Path, mode: str, size: int = 360, name: str = "playback",
                 character=None, emission: float = 1.0, overlay: bool = False, proportions: dict | None = None,
-                camera=None) -> dict:
+                camera=None, workers: int | None = None, onion: int = 0, _only: tuple | None = None) -> dict:
     """Render a shot: the frames, a still per key (key_f0000.png...), the key sheet and a playback named name.mp4
     or name.gif. Returns the paths written and the playback kind. With a character ("kei", "keira" or a loaded
     one) each frame is a row of the character views drawn with its shapes, on its proportions, its name in every
@@ -967,21 +1187,60 @@ def render_shot(shot_path: Path, out_dir: Path, mode: str, size: int = 360, name
         tick = stride_tick(_cycle(shot, line)[0]) if line else None
         bounds = fit([fr["joints"] for fr in frames], follow=line, tick=tick)
 
+        def joints_at(f: int) -> dict:
+            """The frame's joints, with the onion skin: the frames around it as pale figures behind it."""
+            j = dict(frames[f]["joints"])
+            for d in range(1, onion + 1):
+                for g in (f - d, f + d):
+                    if 0 <= g < len(frames):
+                        j.update({f"onion{g:04d}/{n}": p for n, p in frames[g]["joints"].items() if "/" not in n})
+            return j
+
+        from kei.objects import ObjectError, object_edges
+        try:
+            edges = object_edges(shot, frames)
+        except ObjectError as e:
+            raise ShotError(str(e)) from None
+
         def draw(f: int, label: str) -> _Canvas:
             cv = _Canvas(2 * size, 2 * size)
-            _views_on(cv, 0, 0, frames[f]["joints"], size, bounds[f], label)
+            _views_on(cv, 0, 0, joints_at(f), size, bounds[f], label, edges[f])
             return cv
+
+        code = _code_digest()
+
+        def frame_key(f: int, label: str) -> str:
+            return _digest(code, joints_at(f), repr(bounds[f]), size, label, repr(edges[f]))
 
         def key_sheet() -> bytes:
             return _key_sheet(frames, key_fs or [0], bounds, size // 2)
     else:
+        if onion:
+            raise ShotError("onion skins draw on the stick figure: render with --style stick")
         frames, draw_c = _character_frames(shot, mode, character, size, emission, overlay, camera)
 
         def draw(f: int, label: str) -> _Canvas:
             return draw_c(f, label, size)
 
-        def key_sheet() -> bytes:   # one row of views per key
-            rows = [draw_c(f, f"F{f} key", size // 2) for f in key_fs or [0]]
+        def frame_key(f: int, label: str) -> str:
+            return draw_c.key(f, label, size)
+
+        def key_sheet() -> bytes:   # one row of views per key; a row drawn before for the same key is reused
+            rows_dir = Path(out_dir) / "frames" / ".keyrows"
+            rows_dir.mkdir(parents=True, exist_ok=True)
+            rows = []
+            for f in key_fs or [0]:
+                k = draw_c.key(f, f"F{f} key", size // 2)
+                p = rows_dir / f"{k[:32]}.png"
+                row = read_png(p.read_bytes()) if p.is_file() else None
+                if row is None:
+                    row = draw_c(f, f"F{f} key", size // 2)
+                    p.write_bytes(row.png())
+                rows.append(row)
+            keep = {f"{draw_c.key(f, f'F{f} key', size // 2)[:32]}.png" for f in key_fs or [0]}
+            for old in rows_dir.glob("*.png"):
+                if old.name not in keep:
+                    old.unlink()
             cv = _Canvas(rows[0].w, sum(r.h for r in rows))
             for i, r in enumerate(rows):
                 cv.px[i * len(r.px):(i + 1) * len(r.px)] = r.px
@@ -989,16 +1248,44 @@ def render_shot(shot_path: Path, out_dir: Path, mode: str, size: int = 360, name
     out_dir = Path(out_dir)
     frames_dir = out_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
+    labels = {fr["f"]: f"F{fr['f']} {'key' if fr['f'] in key_fs else ''}".strip() for fr in frames}
+    if _only is not None:     # a worker of a parallel render: its share of the frames, nothing else
+        for fr in frames:
+            if fr["f"] in _only:
+                (frames_dir / f"f{fr['f']:04d}.png").write_bytes(draw(fr["f"], labels[fr["f"]]).png())
+        return {}
+    # A frame whose inputs (pose, framing, character, settings, drawing code) did not change since the last render
+    # into this folder is kept as it is: only the changed frames are drawn again.
+    cache_path = frames_dir / ".cache.json"
+    try:
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cached = {}
+    want = {f"f{fr['f']:04d}.png": frame_key(fr["f"], labels[fr["f"]]) for fr in frames}
     for old in frames_dir.glob("f*.png"):
-        old.unlink()
-    canvases, paths = [], []
-    for fr in frames:
-        tag = "key" if fr["f"] in key_fs else ""
-        cv = draw(fr["f"], f"F{fr['f']} {tag}".strip())
-        p = frames_dir / f"f{fr['f']:04d}.png"
-        p.write_bytes(cv.png())
-        canvases.append(cv)
-        paths.append(p)
+        if cached.get(old.name) != want.get(old.name):
+            old.unlink()
+    todo = [fr["f"] for fr in frames if not (frames_dir / f"f{fr['f']:04d}.png").is_file()]
+    canvases, paths = [], [frames_dir / f"f{fr['f']:04d}.png" for fr in frames]
+    n_workers = _workers(workers, len(todo), _by_name(character))
+    gif = not shutil.which("ffmpeg")      # the GIF fallback needs every frame in memory
+    if n_workers > 1:
+        _in_parallel(render_shot, n_workers, todo,
+                     dict(shot_path=shot_path, out_dir=out_dir, mode=mode, size=size, name=name, character=_by_name(character),
+                          emission=emission, overlay=overlay, proportions=proportions, camera=camera, onion=onion))
+    else:
+        for fr in frames:
+            p = frames_dir / f"f{fr['f']:04d}.png"
+            if fr["f"] in todo:
+                cv = draw(fr["f"], labels[fr["f"]])
+                p.write_bytes(cv.png())
+            elif gif:
+                cv = read_png(p.read_bytes()) or draw(fr["f"], labels[fr["f"]])
+            else:
+                cv = None
+            if cv is not None:
+                canvases.append(cv)
+    cache_path.write_text(json.dumps(want), encoding="utf-8")
     stills = []
     for old in out_dir.glob("key_f*.png"):
         old.unlink()
@@ -1012,9 +1299,10 @@ def render_shot(shot_path: Path, out_dir: Path, mode: str, size: int = 360, name
         (out_dir / old).unlink(missing_ok=True)
     # a loop's last frame repeats frame 0: the playback leaves it out, so the loop has no hitch at the seam
     played = canvases[:-1] if shot.get("loop") and len(canvases) > 1 else canvases
+    count = len(paths) - 1 if shot.get("loop") and len(paths) > 1 else len(paths)   # drawn here or by the workers
     (out_dir / f"{name}_x{LOOPS}.mp4").unlink(missing_ok=True)
     loops = None
-    if _mp4(frames_dir, fps, out_dir / f"{name}.mp4", len(played)):
+    if _mp4(frames_dir, fps, out_dir / f"{name}.mp4", count):
         playback, kind = out_dir / f"{name}.mp4", "mp4"
         if shot.get("loop"):
             loops = _repeat(playback, LOOPS, out_dir / f"{name}_x{LOOPS}.mp4")
@@ -1039,7 +1327,8 @@ def _encode(frames_dir: Path, fps: float, path: Path, count: int) -> bool:
 
 
 def render_post(shot_path: Path, out_dir: Path, mode: str, character, height: int = 1080, name: str = "shot",
-                emission: float = 1.0, video: bool = True) -> dict:
+                emission: float = 1.0, video: bool = True, workers: int | None = None,
+                _only: tuple | None = None) -> dict:
     """A clean video of a shot to post: the character in four views (side, three quarter, front, back) two by two,
     height pixels square, drawn smooth, with no label, border or tick; H.264, yuv420p, at the shot's frame rate. A
     loop also gets name_post_x10.mp4. Every view rides the travel, so the figure walks in place, centred, and a loop
@@ -1053,6 +1342,7 @@ def render_post(shot_path: Path, out_dir: Path, mode: str, character, height: in
     shot = on_character(shot, ch)
     frames = bake(shot, mode)
     parts = [_character_parts(ch, fr["pose"]) for fr in frames]
+    ch, parts = with_objects(ch, shot, frames, parts)
     pts = [{**character_points(p), "pelvis": fr["joints"]["pelvis"]} for p, fr in zip(parts, frames)]
     # every view rides the even travel, so the figure walks in place, centred, and a loop's last frame flows into
     # its first with no jump back; with no ground mark nothing scrolls
@@ -1067,10 +1357,20 @@ def render_post(shot_path: Path, out_dir: Path, mode: str, character, height: in
     out_dir = Path(out_dir)
     frames_dir = out_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
-    for old in frames_dir.glob("f*.png"):
-        old.unlink()
+    if _only is None:
+        for old in frames_dir.glob("f*.png"):
+            old.unlink()
     paths = []
+    n_workers = 1 if _only is not None else _workers(workers, len(frames), _by_name(character))
+    if n_workers > 1:
+        _in_parallel(render_post, n_workers, [fr["f"] for fr in frames],
+                     dict(shot_path=shot_path, out_dir=out_dir, mode=mode, character=_by_name(character), height=height,
+                          name=name, emission=emission, video=False))
     for fr, pp in zip(frames, parts):
+        if n_workers > 1 or (_only is not None and fr["f"] not in _only):
+            if n_workers > 1:
+                paths.append(frames_dir / f"f{fr['f']:04d}.png")
+            continue
         cv = _Canvas(2 * panel, 2 * panel)
         for i, view in enumerate(POST_VIEWS):
             _character_panel(cv, (i % 2) * panel, (i // 2) * panel, view, ch, pp, bounds[fr["f"]], panel, "",
@@ -1078,6 +1378,8 @@ def render_post(shot_path: Path, out_dir: Path, mode: str, character, height: in
         p = frames_dir / f"f{fr['f']:04d}.png"
         p.write_bytes(cv.png())
         paths.append(p)
+    if _only is not None:
+        return {}
     result = {"frames": paths, "video": None, "loops": None,
               "pelvis_px": {v: [pelvis_px(v, i) for i in range(len(frames))] for v in POST_VIEWS}}
     if video:

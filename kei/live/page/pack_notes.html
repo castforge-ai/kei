@@ -1,0 +1,66 @@
+    <section class="block" id="reviewer-notes" aria-labelledby="rn-title">
+      <h2 id="rn-title">Your notes</h2>
+      <p class="lead">Write what is wrong in your own words, with the frames if you know them. Save the notes file and send it back to the animator: they bring it into the shot with kei note SHOT --from-file and the file name.</p>
+      <div class="rn-form">
+        <label class="rn-field"><span>Your name</span><input id="rn-name" type="text" maxlength="80" autocomplete="name"></label>
+        <label class="rn-field rn-frames"><span>Frames (optional)</span><input id="rn-frames" type="text" maxlength="40" placeholder="13-18"></label>
+        <label class="rn-field rn-text"><span>Note</span><textarea id="rn-text" rows="3" maxlength="4000"></textarea></label>
+        <div class="rn-actions">
+          <button class="btn" id="rn-add" type="button">Add note</button>
+          <button class="btn" id="rn-save" type="button">Save notes file</button>
+          <span class="hint" id="rn-said" role="status"></span>
+        </div>
+      </div>
+      <ol class="rn-list" id="rn-list"></ol>
+    </section>
+<style>
+.rn-form{display:grid;grid-template-columns:minmax(0,1fr) 160px;gap:12px;margin-top:12px}
+.rn-field{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--soft);min-width:0}
+.rn-field input,.rn-field textarea{font:inherit;color:var(--graphite);background:var(--table);border:1px solid var(--rule);border-radius:7px;padding:6px 10px;width:100%}
+.rn-text,.rn-actions{grid-column:1/-1}
+.rn-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.rn-list{margin:14px 0 0;padding-left:22px;display:flex;flex-direction:column;gap:8px}
+.rn-list li{display:flex;gap:10px;align-items:baseline;justify-content:space-between}
+.rn-list li span{min-width:0;overflow-wrap:anywhere}
+@media (max-width:560px){.rn-form{grid-template-columns:1fr}}
+</style>
+<script>
+(function(){
+  var PACK = window.KEI_PACK;
+  var key = 'kei-pack-notes-' + PACK.pack;
+  var notes = [];
+  try { notes = JSON.parse(localStorage.getItem(key) || '[]') || []; } catch (e) { notes = []; }
+  var $ = function(id){ return document.getElementById(id); };
+  try { $('rn-name').value = localStorage.getItem('kei-pack-name') || ''; } catch (e) {}
+  function keep(){ try { localStorage.setItem(key, JSON.stringify(notes)); localStorage.setItem('kei-pack-name', $('rn-name').value); } catch (e) {} }
+  function draw(){
+    var list = $('rn-list'); list.textContent = '';
+    notes.forEach(function(n, i){
+      var li = document.createElement('li');
+      var s = document.createElement('span'); s.textContent = (n.frames ? 'f' + n.frames + ': ' : '') + n.text;
+      var b = document.createElement('button'); b.className = 'btn'; b.type = 'button'; b.textContent = 'Remove';
+      b.addEventListener('click', function(){ notes.splice(i, 1); keep(); draw(); });
+      li.append(s, b); list.append(li);
+    });
+    $('rn-save').disabled = notes.length === 0;
+  }
+  $('rn-add').addEventListener('click', function(){
+    var text = $('rn-text').value.trim();
+    if (!text) { $('rn-said').textContent = 'Write the note first.'; return; }
+    notes.push({text: text, frames: $('rn-frames').value.trim()});
+    $('rn-text').value = ''; $('rn-frames').value = ''; $('rn-said').textContent = 'Added.'; keep(); draw();
+  });
+  $('rn-save').addEventListener('click', function(){
+    var name = $('rn-name').value.trim();
+    if (!name) { $('rn-said').textContent = 'Write your name first.'; $('rn-name').focus(); return; }
+    keep();
+    var body = JSON.stringify({kei_notes: 1, shot: PACK.shot, pack: PACK.pack, reviewer: name,
+                               saved: new Date().toISOString(), notes: notes}, null, 1);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([body], {type: 'application/json'}));
+    a.download = PACK.shot + '_notes.json'; document.body.append(a); a.click(); a.remove();
+    $('rn-said').textContent = 'Saved ' + PACK.shot + '_notes.json: send it back to the animator.';
+  });
+  draw();
+})();
+</script>

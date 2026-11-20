@@ -1,4 +1,5 @@
-"""The local review server: standard library only, bound to 127.0.0.1, one token per run.
+"""The local review server: standard library only, bound to 127.0.0.1, one token per run, and (for kei review) a link
+that works once.
 
 Every request needs the session cookie (set by the first load of the token URL) and the Host 127.0.0.1:<port>, which
 blocks DNS rebinding. Every POST also needs the token in the X-Kei-Token header and the page's own Origin, so a web
@@ -19,6 +20,8 @@ PAGE_DIR = Path(__file__).resolve().parent / "page"
 PAGE_FILES = {"/review.js": ("review.js", "text/javascript; charset=utf-8"),
               "/review.css": ("review.css", "text/css; charset=utf-8")}
 TOKEN_SLOT = "{{KEI_TOKEN}}"
+USED_LINK = ("This review link was already opened, and a link works once. Use the tab it opened, or stop kei review "
+             "and run it again for a new link.")
 COOKIE = "kei_review"     # the cookie is named kei_review_<port>: browsers share cookies across ports
 MAX_BODY = 8 * 1024 * 1024
 DRAIN_SECONDS = 1     # how long a refused body may pause before the server stops reading it (loopback never pauses)
@@ -37,7 +40,8 @@ def _same(a: str | None, b: str) -> bool:
 
 class ReviewServer:
     def __init__(self, routes: dict[str, Route], files: Callable[[], dict[str, Path]], port: int = 0,
-                 page_dir: Path = PAGE_DIR, page_files: dict | None = None, name: str = "kei-review"):
+                 page_dir: Path = PAGE_DIR, page_files: dict | None = None, name: str = "kei-review",
+                 single_use_link: bool = False):
         self.routes = dict(routes)
         self.page_dir = Path(page_dir)        # the live page (kei.live) serves its own page with the same checks
         self.page_files = PAGE_FILES if page_files is None else page_files
@@ -46,6 +50,11 @@ class ReviewServer:
         self.port = port
         self.token = secrets.token_urlsafe(32)
         self.session = secrets.token_urlsafe(32)   # the cookie's value: never the token itself
+        # The link's own token. With single_use_link it is not the page's POST token and it works once: a link
+        # copied into a transcript or the browser history opens nothing after the first load.
+        self.link = secrets.token_urlsafe(32) if single_use_link else self.token
+        self.single_use_link = single_use_link
+        self.link_used = False
         self.httpd: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
         self.closed = threading.Event()
@@ -69,7 +78,7 @@ class ReviewServer:
         self.port = self.httpd.server_address[1]
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="kei-review", daemon=True)
         self.thread.start()
-        return f"{self.origin}/?t={self.token}"
+        return f"{self.origin}/?t={self.link}"
 
     def stop(self) -> None:
         if self.httpd is not None:
@@ -163,8 +172,14 @@ class _Handler(BaseHTTPRequestHandler):
             return self._refuse()
         url = urlsplit(self.path)
         if url.path == "/" and "t" in parse_qs(url.query):
-            if not _same(parse_qs(url.query)["t"][0], self.owner.token):
+            if not _same(parse_qs(url.query)["t"][0], self.owner.link):
                 return self._refuse()
+            if self.owner.single_use_link:
+                if self.owner.link_used:
+                    if self._cookie_ok():        # this browser already holds the session: just show the page
+                        return self._send(303, b"", "text/plain", {"Location": "/"})
+                    return self._send(410, USED_LINK.encode("utf-8"), "text/plain; charset=utf-8")
+                self.owner.link_used = True
             return self._send(303, b"", "text/plain", {
                 "Location": "/", "Set-Cookie": f"{self.owner.cookie_name}={self.owner.session}; HttpOnly; SameSite=Strict; Path=/"})
         if not self._cookie_ok():

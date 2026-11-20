@@ -133,7 +133,7 @@ def test_status_open_in_text_names_the_shot_its_status_and_its_notes(here, capsy
 
 def test_status_without_a_shot_or_open_says_what_to_give(here, capsys):
     assert main(["status"]) == 1
-    assert "kei status <shot>" in capsys.readouterr().out
+    assert "kei status <shot>" in "".join(capsys.readouterr())
 
 
 # -- Task 2: notes from the chat, and undo ----------------------------------------------------------------------------
@@ -184,7 +184,7 @@ def test_undo_refuses_after_a_new_pass(here, capsys):
     state = (root / ".kei" / "state.json").read_bytes()
     capsys.readouterr()
     assert main(["note", str(root), "--undo"]) == 1
-    assert "new pass" in capsys.readouterr().out
+    assert "new pass" in "".join(capsys.readouterr())
     assert (root / ".kei" / "state.json").read_bytes() == state
 
 
@@ -196,7 +196,7 @@ def test_undo_refuses_after_kei_worked_on_the_shot(here, capsys):
     save_state(root, s)
     capsys.readouterr()
     assert main(["note", str(root), "--undo"]) == 1
-    assert "cannot be undone" in capsys.readouterr().out
+    assert "cannot be undone" in "".join(capsys.readouterr())
 
 
 def test_undo_refuses_a_note_given_with_kei_note_or_on_the_review_page(here, capsys):
@@ -205,7 +205,7 @@ def test_undo_refuses_a_note_given_with_kei_note_or_on_the_review_page(here, cap
     assert main(["note", str(root), "--text", "the arm swings late"]) == 0
     capsys.readouterr()
     assert main(["note", str(root), "--undo"]) == 1
-    assert "chat" in capsys.readouterr().out and load_state(root).history[-1]["result"] == "note"
+    assert "chat" in "".join(capsys.readouterr()) and load_state(root).history[-1]["result"] == "note"
     root2 = make_shot(here, "jump")
     note_shot(root2, "from the page", "passes", here / "lessons.local.md", round_id=None)
     assert main(["note", str(root2), "--undo"]) == 1
@@ -216,7 +216,7 @@ def test_undo_with_nothing_to_undo_or_an_unknown_note_says_so(here, capsys):
     root = make_shot(here, "walk")
     assert main(["note", str(root), "--undo"]) == 1
     assert main(["note", str(root), "--undo", "local.9"]) == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert "no note" in out and "local.9" in out
 
 
@@ -337,7 +337,7 @@ def test_fixed_refuses_when_no_new_pass_was_shown(here, capsys):
     state = (root / ".kei" / "state.json").read_bytes()
     capsys.readouterr()
     assert main(["fixed", str(root), "--all"]) == 1
-    assert "show the new pass first" in capsys.readouterr().out
+    assert "show the new pass first" in "".join(capsys.readouterr())
     assert (root / ".kei" / "state.json").read_bytes() == state
 
 
@@ -346,7 +346,7 @@ def test_fixed_refuses_numbers_that_do_not_exist_and_lists_the_real_ones(here, c
     state = (root / ".kei" / "state.json").read_bytes()
     capsys.readouterr()
     assert main(["fixed", str(root), "--not", "2,5"]) == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert "5" in out and "1. the arm swings late" in out and "2. the head bobs" in out
     assert (root / ".kei" / "state.json").read_bytes() == state
     assert main(["fixed", str(root), "--not", "x"]) == 1
@@ -371,7 +371,7 @@ def test_fixed_needs_all_or_not(here, capsys):
 def test_fixed_with_no_open_note_says_so(here, capsys):
     root = make_shot(here, "walk")
     assert main(["fixed", str(root), "--all"]) == 1
-    assert "no open note" in capsys.readouterr().out
+    assert "no open note" in "".join(capsys.readouterr())
 
 
 # -- Task 4: drop, park, and the sign-off words ------------------------------------------------------------------------
@@ -418,7 +418,7 @@ def test_drop_refuses_a_closed_shot_and_empty_words(here, capsys):
 def test_park_refuses_a_closed_shot(here, capsys):
     root = make_shot(here, "walk", status="rejected")
     assert main(["park", str(root)]) == 1
-    assert "closed" in capsys.readouterr().out
+    assert "closed" in "".join(capsys.readouterr())
 
 
 def test_drop_in_auto_mode_shares_only_the_confirmed_rules(here, monkeypatch, capsys):
@@ -457,3 +457,19 @@ def test_drop_in_ask_mode_points_to_the_review_page_for_a_confirmed_rule(here, c
     capsys.readouterr()
     assert main(["drop", str(root), "--words", "drop it"]) == 0
     assert f"kei review {root}" in capsys.readouterr().out
+
+
+def test_status_json_of_one_shot_names_its_status_stage_and_notes(here, capsys):
+    root = make_shot(here, "walk")
+    assert chat_note(root, "the arm swings late") == 0
+    capsys.readouterr()
+    assert main(["status", str(root), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["shot"] == "walk" and data["status"] == "running" and data["notes"][0]["words"] == "the arm swings late"
+    assert {"attempts", "send_backs", "stage", "last_pass"} <= set(data)
+
+
+def test_an_error_goes_to_stderr_and_nothing_to_stdout(here, capsys):
+    assert main(["status"]) == 1
+    out, err = capsys.readouterr()
+    assert out == "" and err.startswith("kei: ")

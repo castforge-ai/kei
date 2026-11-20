@@ -80,7 +80,7 @@ def test_kei_render_through_the_delivery_camera(tmp_path, capsys):
 def test_delivery_without_a_plan_camera_says_what_to_add(tmp_path, capsys):
     write(tmp_path, WALK)
     assert main(["render", str(tmp_path), "blocking", "--camera", "delivery"]) == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert 'plan/plan.json has no "camera"' in out
 
 

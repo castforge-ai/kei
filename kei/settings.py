@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from kei.config import (APPS as APP_CHOICES, example_config, LIVE_SWITCH, MAYA_SESSIONS as MAYA_SESSION_CHOICES, UNREAL_SESSIONS as UNREAL_SESSION_CHOICES,
+from kei.config import (APPS as APP_CHOICES, example_config, LIVE_SWITCH, WEB_SWITCH, SEND_BACK_POLICIES, RETRY_NOTE, MAYA_SESSIONS as MAYA_SESSION_CHOICES, UNREAL_SESSIONS as UNREAL_SESSION_CHOICES,
                         Config, ConfigError, load_config_text)
 from kei.toml_edit import TomlEditError, add_table, format_value, remove_array_table, set_value, unset_value
 
@@ -48,8 +48,30 @@ SETTINGS: tuple[Setting, ...] = (
             "Any agent command line. A run needs at least one critic: the agent that animates never reviews its own "
             "work."),
     Setting("critics[<name>].timeout_s", "int", 1800, "seconds a critic may take for one review"),
+    Setting("animator.model", "text", None, "the animating agent's model (claude or codex seats)",
+            "Added to its command line as the CLI's own flag (--model, or -m for codex)."),
+    Setting("animator.effort", "text", None, "the animating agent's effort level (claude or codex seats)",
+            "Added to its command line: --effort for claude, model_reasoning_effort for codex."),
+    Setting("critics[<name>].model", "text", None, "a critic's model (claude or codex seats)"),
+    Setting("critics[<name>].effort", "text", None, "a critic's effort level (claude or codex seats)"),
+    Setting("timeouts.<stage>", "int", None, "seconds the animating agent may take on one stage, over animator.timeout_s",
+            "A [timeouts] table: blocking = 5400 gives the blocking stage its own limit. A try that runs out of time "
+            "keeps its work and is not counted, twice per stage."),
+    Setting("limits.primary_critic", "text", None, "when two critics ask opposite things, this critic's note stands",
+            "Without it, opposite notes on the same frames and part become one question for you."),
+    Setting("limits.<stage>.max_attempts", "int", None, "tries for one stage, over limits.max_attempts",
+            "A [limits.plan] or [limits.passes] table sets the limits of that stage only."),
+    Setting("limits.<stage>.max_send_backs", "int", None, "send-backs for one stage, over limits.max_send_backs"),
+    Setting("critics[<name>].fallback_cmd", "command", None, "a stand-in critic for a usage limit",
+            "When this critic hits a usage limit, this command line reviews in its place, so the stage goes on."),
     Setting("limits.max_attempts", "int", 3, "tries per stage before the shot stops for a person"),
     Setting("limits.max_send_backs", "int", 3, "critic send-backs per stage before the shot stops for a person"),
+    Setting("limits.on_send_back_limit", "choice", "stop", "what Kei does when a stage reaches its send-back limit",
+            "stop: the shot waits for a person (kei retry). retry: the stage runs again from attempt 1 with "
+            "limits.retry_note for the animator, up to limits.auto_retries times, then stops. advance: the critics' "
+            "open notes go to your sign-off checklist and the shot goes on to the next stage.", SEND_BACK_POLICIES),
+    Setting("limits.auto_retries", "int", 2, "automatic retries per stage when on_send_back_limit is retry"),
+    Setting("limits.retry_note", "text", RETRY_NOTE, "what the animator reads on an automatic retry"),
     Setting("share.mode", "choice", "ask", "what Kei does with new lessons when you accept a shot",
             "ask: the review page offers to share them and runs nothing until you press Send; always: at Accept, "
             "Kei forks the project and pushes each new lesson folder to a branch of your fork, which is public, "
@@ -60,6 +82,10 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("share.repo", "text", "castforge-ai/kei", "the GitHub repository your lessons are shared to",
             "Written owner/name. The default is the public Kei project; a studio can name its own repository, "
             "private or public, and pass the good lessons on from there."),
+    Setting("share.sign_off", "choice", "off", "add your Signed-off-by line to every lesson you share",
+            "on: each shared lesson's commit carries Signed-off-by with your GitHub account, which says you agree "
+            "to the Developer Certificate of Origin in CONTRIBUTING.md. off: add it yourself to the pull request.",
+            ("on", "off")),
     Setting("book.path", "path", BUNDLED, "the rule book: a folder of topic files, or one file",
             "A path next to kei.toml. Leave it unset to use the book that ships with Kei."),
     Setting("book.lessons", "path", "lessons.local.md", "the file of your local lessons (kei note writes them)",
@@ -102,6 +128,11 @@ SETTINGS: tuple[Setting, ...] = (
             "on: kei run starts the shot's live page on 127.0.0.1 and prints its link; the page shows the stage, "
             "the key poses of each try, the critics' notes on their frames, the references and the renders, and "
             "updates every second. off: no page (kei live <shot> still opens one by hand).", LIVE_SWITCH),
+    Setting("seats.web", "choice", "on", "web access for Kei's agents, to look for references",
+            "on: the animator and the critics may search the web and read pages (papers, and clips to look at; "
+            "linked at a timestamp, never downloaded). A Claude Code seat gets WebSearch and WebFetch, a Codex seat "
+            "gets --search. off: no web; the seats use the book and your kei-refs library only. kei init asks once.",
+            WEB_SWITCH),
     Setting("live.open", "choice", "on", "open the live page in your browser when it starts",
             "on: the browser opens once, when the shot's live page starts; off: Kei only prints the link.",
             LIVE_SWITCH),

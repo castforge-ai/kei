@@ -358,11 +358,13 @@ def bundle_name(lesson_id: str, lessons: Path, when: date | None = None) -> str:
 
 
 def share_plan(bundle: Path, repo: str, identity: tuple[str, int], stamp: str = "",
-               auto: bool = False) -> list[list[str]]:
+               auto: bool = False, sign_off: bool = False) -> list[list[str]]:
     """The exact commands, shown to the user before the click. Relative paths only: the first runs in a temporary
     folder of Kei's, the rest inside the clone it makes. The commit carries the GitHub account only, set for that one
     command with git -c and never written to any git config. The last opens GitHub's own form; the user submits it.
-    auto (share.mode = "auto", set by the user in kei settings or kei.toml): the last opens the pull request itself."""
+    auto (share.mode = "auto", set by the user in kei settings or kei.toml): the last opens the pull request itself.
+    sign_off (share.sign_off = "on", the user's own choice): the commit carries a Signed-off-by line for the GitHub
+    account, the user's agreement to the Developer Certificate of Origin in CONTRIBUTING.md."""
     login, uid = identity
     name = Path(bundle).name
     branch = f"lesson/{name}" + (f"-{stamp}" if stamp else "")   # the stamp keeps a re-share off an old branch
@@ -374,7 +376,8 @@ def share_plan(bundle: Path, repo: str, identity: tuple[str, int], stamp: str = 
             ["git", "add", f"lessons/incoming/{name}"],
             ["git", "-c", f"user.name={login}", "-c", f"user.email={noreply(identity)}",
              "-c", "commit.gpgsign=false", "-c", f"core.hooksPath={NO_HOOKS}",
-             "commit", "--no-verify", "-m", f"Lesson: {_title(bundle)}"],
+             "commit", "--no-verify", "-m", f"Lesson: {_title(bundle)}",
+             *(["-m", f"Signed-off-by: {login} <{noreply(identity)}>"] if sign_off else [])],
             ["git", "push", "-u", "fork", branch],
             (["gh", "pr", "create", "--repo", repo, "--head", f"{login}:{branch}", "--title",
               f"Lesson: {_title(bundle)}", "--body", AUTO_BODY] if auto
@@ -491,7 +494,8 @@ class Sharer:
 
     def __init__(self, shot: Path, lessons: Path, mode: str, seat: Callable[[], Seat],
                  runner: Callable[[Path, Path, tuple[str, int]], Runner] = local_runner, gh_found: bool | None = None,
-                 repo: str = UPSTREAM, private: list[str] = (), size: int = 240, reader: Reader = local_reader):
+                 repo: str = UPSTREAM, private: list[str] = (), size: int = 240, reader: Reader = local_reader,
+                 sign_off: bool = False):
         self.shot, self.lessons, self.mode = Path(shot), Path(lessons), mode
         self.seat, self.runner, self.repo, self.private = seat, runner, repo, list(private)
         self.gh = shutil.which("gh") is not None if gh_found is None else gh_found
@@ -502,6 +506,7 @@ class Sharer:
         self.rounds: dict[str, dict] = {}
         self.size = size     # pixels per view of the case rounds the panel plays
         self.reader = reader
+        self.sign_off = sign_off
 
     def _accepted(self) -> None:
         if load_state(self.shot).status not in ("done", "rejected"):
@@ -590,8 +595,8 @@ class Sharer:
             rounds = case_rounds(bundle, self.renders / bundle.name, self.size, prefix=f"share-{lesson_id}")
             self.rounds[lesson_id] = {"dir": self.renders / bundle.name, **rounds}
         stamp = self._stamp(lesson_id)
-        commands = (share_plan(bundle, self.repo, github_identity(self.reader), stamp, auto=self.mode == "auto")
-                    if self.gh else [])
+        commands = (share_plan(bundle, self.repo, github_identity(self.reader), stamp, auto=self.mode == "auto",
+                               sign_off=self.sign_off) if self.gh else [])
         return {"lesson": lesson_id, "folder": str(bundle), "files": files, "gh": self.gh, "rounds": rounds,
                 "commands": commands, "manual": manual_steps(bundle, self.repo), "public_note": PUBLIC_NOTE}
 
@@ -632,7 +637,7 @@ class Sharer:
         auto = self.mode == "auto"
         with tempfile.TemporaryDirectory(prefix="kei-share-") as work:
             identity = github_identity(self.reader)                              # refused before any command
-            plan = share_plan(bundle, self.repo, identity, self._stamp(lesson_id), auto=auto)
+            plan = share_plan(bundle, self.repo, identity, self._stamp(lesson_id), auto=auto, sign_off=self.sign_off)
             printed = run_plan(plan, self.runner(bundle, Path(work), identity))
         if auto:
             return pr_address(printed)

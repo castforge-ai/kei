@@ -8,8 +8,10 @@ from kei.config import example_config, load_config
 
 def test_init_writes_a_kei_toml_that_loads_and_never_overwrites(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
-    assert main(["init"]) == 0
-    assert (tmp_path / "kei.toml").read_bytes() == example_config().read_bytes()
+    assert main(["init", "--web", "on"]) == 0
+    written = (tmp_path / "kei.toml").read_text(encoding="utf-8")
+    example = example_config().read_text(encoding="utf-8")
+    assert written == example.replace('# [seats]\n# web = "on"', '[seats]\nweb = "on"'), "only the web answer changes"
     assert load_config(tmp_path / "kei.toml").animator.cmd
     (tmp_path / "kei.toml").write_text("# mine\n", encoding="utf-8")
     capsys.readouterr()
@@ -37,7 +39,7 @@ def test_the_wheel_ships_the_example_inside_kei():
     root = Path(__file__).resolve().parent.parent
     cfg = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     inc = cfg["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
-    assert inc == {"kei.example.toml": "kei/kei.example.toml"}
+    assert inc == {"kei.example.toml": "kei/kei.example.toml", "skill": "kei/skill"}
 
 
 def test_python_dash_m_kei_runs_the_same_command(tmp_path):

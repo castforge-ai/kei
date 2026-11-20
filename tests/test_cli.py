@@ -110,3 +110,23 @@ def test_status_piped_prints_any_character(tmp_path):
                         "status", str(tmp_path)], capture_output=True, env=env)
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     assert "the hips sink" in r.stdout.decode("utf-8", "replace")
+
+
+def test_the_help_lists_every_command_once_in_groups(capsys):
+    import pytest
+    from kei.cli import COMMAND_GROUPS, SUMMARIES
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = capsys.readouterr().out
+    names = [n for _, group in COMMAND_GROUPS for n in group]
+    assert len(names) == len(set(names)) and set(names) == set(SUMMARIES)
+    assert "tools the agents use" in out and "other:" not in out
+    assert out.index("  run ") < out.index("  render ")
+
+
+def test_refit_pass_is_the_name_and_retarget_still_works(capsys):
+    import pytest
+    for name in ("refit-pass", "retarget"):
+        with pytest.raises(SystemExit):
+            main([name, "--help"])
+        assert "--keep" in capsys.readouterr().out

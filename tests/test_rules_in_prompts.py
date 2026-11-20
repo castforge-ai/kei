@@ -52,7 +52,7 @@ def test_critic_prompt_carries_the_stage_rules(tmp_path):
     run_with_critics(shot(tmp_path), "a box falls", config(tmp_path), animator=FakeSeat("fake", Recorder()),
                      critics=[c])
     plan = next(p for p in c.prompts if "Stage under review: Plan" in p)
-    assert "### R1. Plan rule" in plan and "R2" not in plan
+    assert "- R1. Plan rule" in plan and "R2" not in plan, "the critic gets a checklist of the stage rules"
 
 
 def test_local_lesson_follows_the_book(tmp_path):

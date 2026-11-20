@@ -29,6 +29,28 @@ def _inline(text: str) -> str:
 UNREAL_COPY = ".kei/live/unreal_report.json"     # where the copy beside the Unreal assets was written
 
 
+def page_html(shot: Path, snap: dict, paths: dict, extra: str = "") -> str:
+    """The live page as one HTML text: its style and code inline, the snapshot and the file map inside it. extra is
+    HTML put before </main> (kei pack adds the reviewer's notes there)."""
+    shot = Path(shot)
+    data = {"saved": datetime.now(timezone.utc).isoformat(), "snapshot": snap, "files": paths}
+    html = (PAGE / "index.html").read_text(encoding="utf-8")
+    css = (PAGE / "live.css").read_text(encoding="utf-8")
+    js = (PAGE / "live.js").read_text(encoding="utf-8")
+    html = html.replace('<link rel="stylesheet" href="/live.css">', f"<style>\n{css}</style>")
+    html = html.replace('<script src="/live.js"></script>',
+                        f"<script>window.KEI_STATIC = {_inline(json.dumps(data))};</script>\n"
+                        f"<script>\n{_inline(js)}</script>")
+    html = html.replace("<title>Kei live</title>", f"<title>Kei: {_esc(shot.name)}</title>")
+    if extra:
+        html = html.replace("</main>", extra + "\n  </main>", 1)
+    return html
+
+
+def _esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
 def write_report(shot: Path, dest: Path | None = None) -> Path:
     """The report on top of the shot folder; with dest, a copy elsewhere (beside the Unreal assets) whose images and
     videos point back at the shot folder by full path, so it works on this machine only."""
@@ -38,15 +60,7 @@ def write_report(shot: Path, dest: Path | None = None) -> Path:
         paths = {i: p.relative_to(shot).as_posix() for i, p in found.items()}
     else:
         paths = {i: "file:///" + p.resolve().as_posix().lstrip("/") for i, p in found.items()}
-    data = {"saved": datetime.now(timezone.utc).isoformat(), "snapshot": snapshot(shot), "files": paths}
-    html = (PAGE / "index.html").read_text(encoding="utf-8")
-    css = (PAGE / "live.css").read_text(encoding="utf-8")
-    js = (PAGE / "live.js").read_text(encoding="utf-8")
-    html = html.replace('<link rel="stylesheet" href="/live.css">', f"<style>\n{css}</style>")
-    html = html.replace('<script src="/live.js"></script>',
-                        f"<script>window.KEI_STATIC = {_inline(json.dumps(data))};</script>\n"
-                        f"<script>\n{_inline(js)}</script>")
-    html = html.replace("<title>Kei live</title>", f"<title>Kei: {shot.name}</title>")
+    html = page_html(shot, snapshot(shot), paths)
     out = dest or shot / report_name(shot)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")

@@ -11,7 +11,8 @@ from typing import Callable
 
 from kei.apps import maya_stage, unreal_stage
 from kei.apps.maya_feedback import target_misses
-from kei.book import BookError, Rule, Topic, load_rules, load_topics
+from kei.runlock import run_lock
+from kei.book import BookError, Rule, Topic, lessons_for_shot, load_rules, load_topics
 from kei import character_folder
 from kei.config import Config
 from kei.critic import look_at_paths, panel_review
@@ -22,8 +23,12 @@ from kei.characters import (CharacterError, character_misses, imported_character
 from kei.characters.imported import confirm
 from kei.plan_lock import approve_plan, plan_changes, read_plan
 from kei.prompts import stage_prompt
-from kei.seats import CliSeat, Seat, SeatPaused, SeatResult, pause_kind, with_dirs
+from kei.seats import CliSeat, Seat, SeatPaused, SeatResult, pause_kind, with_dirs, with_web
 from kei.sheet import SheetError, write_sheet
+from kei.pose_record import latest_pass, records_for_review
+from kei.seats import reset_at
+from kei.refinement import refinement_misses
+from kei.ledger import close as ledger_close, ledger_block, regressions as ledger_regressions, reopen as ledger_reopen
 from kei.stages import STAGES, Stage, next_stage, stage_by_id
 from kei.topics import effective_subjects, shot_subjects, stage_block, subject_index, subject_misses
 from kei.state import PAUSED, ShotState, load_state
@@ -51,40 +56,68 @@ def _now() -> str:
 
 
 ATTEMPTS = ("fail", "send_back", "seat_error")   # history results that are one try of the stage
+SEAT_ERROR_CHARS = 2000   # a failed seat's output kept as the miss: its end, where the error is
+
+
+def since_stage_began(state: ShotState, stage_id: str | None = None) -> list[dict]:
+    """The history entries of a stage since it last began, newest first: the walk back stops at the first entry of
+    another stage or at the stage's own pass. Every 'since the stage began' question reads this one list."""
+    stage_id = stage_id or state.stage
+    out = []
+    for h in reversed(state.history):
+        if h.get("stage") != stage_id or h.get("result") == "pass":
+            break
+        out.append(h)
+    return out
+
+
+def capped(text: str, limit: int = SEAT_ERROR_CHARS) -> str:
+    """A seat's output cut to its last limit characters, saying how much was cut."""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return f"(the first {len(text) - limit} characters of the seat's output are cut) ..." + text[-limit:]
+MAX_TIMEOUTS = 2      # a stage's seat may run out of time this often before a timeout counts as a try
+TIMEOUT_NOTE = ("Your last try ran out of time before it finished. Everything it wrote is still in the shot folder, "
+                "and your session goes on: carry on from where it stopped, do not start again.")
 
 
 def carried_notes(state: ShotState) -> dict[str, list[str]]:
     """What the next try of the current stage must read, from the history since the stage last began:
     "gate": the misses of the last try when the gate (or the seat) refused it;
     "critics": the notes of the last send-back, kept through later gate misses, seat errors and retries;
-    "author": every note the author gave for this stage (kei retry --note, kei note), oldest first."""
+    "author": every note the author gave for this stage (kei note, kei answer), oldest first;
+    "animator": instructions for the animator only (kei retry --note, an automatic retry), oldest first. The critics
+    judge against the author's notes, never against the animator's instructions. Each list holds a note once."""
     gate: list[str] | None = None
     critics: list[str] | None = None
     author: list[str] = []
-    for h in reversed(state.history):
-        if h.get("stage") != state.stage or h.get("result") == "pass":
-            break
+    animator: list[str] = []
+    for h in since_stage_began(state):
         result = h.get("result")
-        if gate is None and result in ATTEMPTS:
+        if gate is None and (result in ATTEMPTS or result == "timeout"):
             gate = list(h.get("misses", [])) if result != "send_back" else []
         if critics is None and result in ("send_back", "question") and h.get("misses"):
-            critics = list(h.get("misses", []))
+            critics = list(h.get("misses", [])) + [f"(minor) {m}" for m in h.get("minor", [])]
         if result == "note":
             author[:0] = list(h.get("misses", []))
-        author[:0] = list(h.get("notes", []))
-    return {"gate": gate or [], "critics": critics or [], "author": author}
+        if h.get("for") == "animator":
+            animator[:0] = list(h.get("notes", []))
+        else:
+            author[:0] = list(h.get("notes", []))
+    return {"gate": gate or [], "critics": critics or [], "author": _once(author), "animator": _once(animator)}
+
+
+def _once(notes: list[str]) -> list[str]:
+    """The notes in order, each once."""
+    seen: set[str] = set()
+    return [n for n in notes if not (n.strip() in seen or seen.add(n.strip()))]
 
 
 def carried_poses(state: ShotState) -> list[str]:
     """The pose files of the author's feedback notes for the current stage since it last began (kei maya feedback),
     oldest first: the next pass must reach their targets."""
-    out: list[str] = []
-    for h in reversed(state.history):
-        if h.get("stage") != state.stage or h.get("result") == "pass":
-            break
-        if h.get("pose"):
-            out.insert(0, h["pose"])
-    return out
+    return [h["pose"] for h in reversed(since_stage_began(state)) if h.get("pose")]
 
 
 def _author_notes(state: ShotState, shot_dir: Path) -> list[str]:
@@ -93,36 +126,136 @@ def _author_notes(state: ShotState, shot_dir: Path) -> list[str]:
     return carried_notes(state)["author"] + target_lines(shot_dir, carried_poses(state))
 
 
+def _animator_notes(state: ShotState, shot_dir: Path) -> list[str]:
+    """What the animator reads as notes: the author's, then the instructions meant for the animator alone."""
+    return _author_notes(state, shot_dir) + carried_notes(state)["animator"]
+
+
+LATE_STAGES = ("checks", "self_review", "deliver")   # stages that may make a new pass after the passes review
+PASS_MARK = "pass:"   # a changed-files entry that names a new pass, not a plan file
+
+
+def pass_stamp(shot_dir: Path) -> dict | None:
+    """The newest pass (the highest out_p<N> with a shot.json) and the hash of its shot.json."""
+    import hashlib
+    from kei.pose_record import latest_pass
+    name = latest_pass(shot_dir, "passes")
+    if name is None:
+        return None
+    data = (Path(shot_dir) / f"out_{name}" / "shot.json").read_bytes()
+    return {"pass": name, "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def pass_changes(shot_dir: Path, stage_id: str, approved: dict | None) -> list[str]:
+    """At checks, self-review or delivery: the newest pass, when it is not the one the panel passed, so the critics
+    review the motion that will be delivered."""
+    if stage_id not in LATE_STAGES or approved is None:
+        return []
+    now = pass_stamp(shot_dir)
+    if now is None or now == approved:
+        return []
+    return [f"{PASS_MARK}out_{now['pass']}/shot.json (the panel last passed out_{approved['pass']})"]
+
+
+def _timeouts(state: ShotState, stage_id: str) -> int:
+    """The timeouts of the current run of the stage (since it last began)."""
+    return sum(1 for h in since_stage_began(state, stage_id) if h.get("result") == "timeout")
+
+
+def _run_animator(animator, prompt: str, shot_dir: Path, state: ShotState, stage_id: str,
+                  timeout_s: int | None = None):
+    """Run the animator. A Claude Code seat keeps one session per stage: the first try starts it, later tries (a gate
+    miss, a send-back, a retry) resume it, so the seat keeps what it read and the helpers it wrote. A session the CLI
+    no longer has starts afresh."""
+    import time
+    import uuid
+    from kei.seats import NO_SESSION, CliSeat, keep_run, with_session
+    t0 = time.time()
+    if timeout_s and isinstance(animator, CliSeat):     # the stage's own time limit ([timeouts] in kei.toml)
+        from dataclasses import replace as _replace
+        animator = CliSeat(_replace(animator.spec, timeout_s=timeout_s))
+    before = _scripts(shot_dir)
+    result = _run_animator_seat(animator, prompt, shot_dir, state, stage_id, CliSeat, NO_SESSION, uuid, with_session)
+    state.last_run = keep_run(shot_dir, f"{stage_id}-animator", prompt, result, time.time() - t0)
+    new = sorted(_scripts(shot_dir) - before)
+    if new:   # the throwaway scripts this try wrote: the count shows what Kei's own tools still lack
+        outside = [s for s in new if not s.startswith(".kei/scratch/")]
+        state.last_run = {**state.last_run, "scripts": len(new), **({"scripts_outside_scratch": outside[:20]}
+                                                                      if outside else {})}
+    return result
+
+
+def _scripts(shot_dir: Path) -> set[str]:
+    """The Python scripts in the shot: its own folders and .kei/scratch, not Kei's other bookkeeping."""
+    root = Path(shot_dir)
+    out = set()
+    for p in root.rglob("*.py"):
+        rel = p.relative_to(root).as_posix()
+        if not rel.startswith(".kei/") or rel.startswith(".kei/scratch/"):
+            out.add(rel)
+    return out
+
+
+def _run_animator_seat(animator, prompt, shot_dir, state, stage_id, CliSeat, NO_SESSION, uuid, with_session):
+    if not isinstance(animator, CliSeat):
+        return animator.run(prompt, shot_dir)
+    sid = state.sessions.get(stage_id)
+    from kei.seats import is_codex_exec
+    if is_codex_exec(animator.spec):     # Codex names its own session: read it from the answer, resume it next try
+        result = CliSeat(with_session(animator.spec, sid or "", resume=bool(sid))).run(prompt, shot_dir)
+        if sid and result.exit_code != 0 and NO_SESSION.search(result.output or ""):
+            result = CliSeat(with_session(animator.spec, "", resume=False)).run(prompt, shot_dir)
+        if result.session:
+            state.sessions[stage_id] = result.session
+        return result
+    seat = CliSeat(with_session(animator.spec, sid or str(uuid.uuid4()), resume=bool(sid)))
+    if seat.spec is animator.spec:
+        return animator.run(prompt, shot_dir)
+    if not sid:
+        state.sessions[stage_id] = seat.spec.cmd[2]
+    result = seat.run(prompt, shot_dir)
+    if sid and result.exit_code != 0 and NO_SESSION.search(result.output or ""):
+        state.sessions[stage_id] = str(uuid.uuid4())
+        result = CliSeat(with_session(animator.spec, state.sessions[stage_id], resume=False)).run(prompt, shot_dir)
+    return result
+
+
+def _limit_reached(state: ShotState, stage_id: str, config: Config, misses: list[str]) -> str:
+    """The stage hit its send-back limit: what limits.on_send_back_limit says to do. "retry" runs the stage again
+    from attempt 1 with limits.retry_note for the animator, up to limits.auto_retries times; "advance" moves the open
+    notes to the author's sign-off checklist and goes on to the next stage; "stop" (and a used-up retry) stops for a
+    person. Returns "retry", "advance" or "stop"."""
+    policy = config.on_send_back_limit
+    if policy == "retry":
+        used = sum(1 for h in state.history if h.get("stage") == stage_id and h.get("result") == "auto_retry")
+        if used < config.auto_retries:
+            state.history.append({"stage": stage_id, "attempt": state.attempts, "result": "auto_retry", "misses": [],
+                                  "for": "animator", "notes": [config.retry_note], "at": _now()})
+            state.attempts = 0
+            state.send_backs = 0
+            return "retry"
+        return "stop"
+    if policy == "advance":
+        _add_sign_off(state, stage_id, [{"from": "send-back limit", "check": f"left open at {stage_id}: {m}"}
+                                        for m in misses])
+        return "advance"
+    return "stop"
+
+
 def carried_drawings(state: ShotState) -> list[str]:
     """The drawing files of the author's notes for the current stage since it last began (kei review), oldest first."""
-    out: list[str] = []
-    for h in reversed(state.history):
-        if h.get("stage") != state.stage or h.get("result") == "pass":
-            break
-        if h.get("result") == "note":
-            out[:0] = list(h.get("drawings", []))
-    return out
+    return [d for h in reversed(since_stage_began(state)) if h.get("result") == "note" for d in h.get("drawings", [])]
 
 
 def _had_records_round(state: ShotState) -> bool:
     """Whether the current stage already ran once more for records since it last began."""
-    for h in reversed(state.history):
-        if h.get("stage") != state.stage or h.get("result") == "pass":
-            return False
-        if h.get("result") == "records":
-            return True
-    return False
+    return any(h.get("result") == "records" for h in since_stage_began(state))
 
 
 def earlier_send_backs(state: ShotState) -> list[list[str]]:
     """The notes of every send-back of the current stage since it last began, oldest first."""
-    out = []
-    for h in reversed(state.history):
-        if h.get("stage") != state.stage or h.get("result") == "pass":
-            break
-        if h.get("result") in ("send_back", "question") and h.get("misses"):
-            out.insert(0, list(h["misses"]))
-    return out
+    return [list(h["misses"]) for h in reversed(since_stage_began(state))
+            if h.get("result") in ("send_back", "question") and h.get("misses")]
 
 
 def _draw_sheet(shot_dir: Path) -> list[str]:
@@ -144,8 +277,8 @@ def stage_rules(config: Config) -> tuple[list[Topic], list[Rule]]:
     for r in lessons:
         if r.id in book_ids:
             raise BookError(f"rule {r.id} is in the book and again in {config.lessons}")
-    for s in STAGES:
-        n = len(stage_block(s.id, topics, lessons, []))
+    for s in STAGES:   # the largest rule set a stage can get: every subject topic named, so no shot stops mid-run
+        n = len(stage_block(s.id, topics, lessons, None))
         if n > config.max_rule_chars:
             raise BookError(f"stage {s.id}: its rules are {n} characters, over book.max_chars {config.max_rule_chars}")
     return topics, lessons
@@ -156,6 +289,23 @@ def _rules(stage_id: str, shot_dir: Path, topics: list[Topic], lessons: list[Rul
     if stage_id == "brief":
         return "\n\n".join(b for b in (stage_block("brief", topics, lessons, None), subject_index(topics)) if b)
     return stage_block(stage_id, topics, lessons, effective_subjects(state.subjects, shot_subjects(shot_dir)))
+
+
+def _critic_rules(stage_id: str, shot_dir: Path, topics: list[Topic], lessons: list[Rule], state: ShotState,
+                  book: Path | None) -> str:
+    """What the critics get: the stage's rules as a checklist with the files of their full text (kei.topics)."""
+    if stage_id == "brief":
+        return _rules(stage_id, shot_dir, topics, lessons, state)
+    from kei.topics import critic_block
+    return critic_block(stage_id, topics, lessons, effective_subjects(state.subjects, shot_subjects(shot_dir)), book)
+
+
+def _book_dir(book: Path | None) -> Path | None:
+    """The folder of the rule book, for the critics to read its files."""
+    if book is None:
+        return None
+    p = Path(book)
+    return p if p.is_dir() else p.parent
 
 
 def _too_much(stage_id: str, rules: str, limit: int) -> str | None:
@@ -208,8 +358,10 @@ def _open_questions(state: ShotState) -> list[dict]:
 def _pause(shot_dir: Path, state: ShotState, entry: dict, why: SeatPaused) -> ShotState:
     """Stop the stage for a usage limit or a machine fault. The try is not counted; kei run resumes it."""
     state.status = f"paused_{why.kind}"
+    when = reset_at(why.output) if why.kind == "usage" else None
     state.history.append({**entry, "result": state.status, "seat": why.seat,
-                          "misses": [why.output[:PAUSE_CHARS] or "(no output)"]})
+                          "misses": [why.output[:PAUSE_CHARS] or "(no output)"],
+                          **({"resume_at": when.strftime("%Y-%m-%d %H:%M")} if when else {})})
     save_state(shot_dir, state)
     return state
 
@@ -287,11 +439,8 @@ def _reuse(shot_dir: Path, state: ShotState, config: Config, stage_id: str) -> c
     refused since the stage began is not tried again: the stage evaluates."""
     if stage_id not in REUSE_STAGES:
         return None
-    for h in reversed(state.history):
-        if h.get("stage") != stage_id or h.get("result") == "pass":
-            break
-        if h.get("reused_all") and h.get("result") == "fail":
-            return None
+    if any(h.get("reused_all") and h.get("result") == "fail" for h in since_stage_began(state, stage_id)):
+        return None
     return character_folder.plan_reuse(shot_dir, config.character)
 
 
@@ -303,7 +452,8 @@ def run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | None
     os.environ[CHARACTER_ENV] = config.character
     os.environ[RUN_ENV] = "1"
     try:
-        return _run_shot(shot_dir, request, config, animator, review, critics)
+        with run_lock(shot_dir):    # one kei run per shot: a second one stops here, before it touches anything
+            return _run_shot(shot_dir, request, config, animator, review, critics)
     finally:
         for k, v in old.items():
             if v is None:
@@ -331,20 +481,25 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
               review: Review | None, critics: list[Seat] | None) -> ShotState:
     shot_dir = Path(shot_dir)
     topics, lessons = stage_rules(config)
+    lessons = lessons_for_shot(lessons, shot_dir)   # a "this shot" lesson of another shot stays out
     if review is None:
         if critics is None:
             for c in config.critics:
                 if shutil.which(c.cmd[0]) is None:
                     raise NoCriticError(f"critic {c.name}: command not found: {c.cmd[0]}; "
                                         "install it or remove that seat from kei.toml")
-            critics = [CliSeat(with_dirs(c, [config.refs_library])) for c in config.critics]
+            critics = [CliSeat(with_web(with_dirs(c, [config.refs_library, _book_dir(config.book)]), config.web))
+                       for c in config.critics]
         if not critics:
             raise NoCriticError("no critic is configured: add a [[critics]] seat to kei.toml")
         review = lambda stage, d, changed: panel_review(stage, d, state.request, critics, changed,  # noqa: E731
-                                                        held["rules"], state.answers, earlier_send_backs(state),
-                                                        _author_notes(state, shot_dir))
+                                                        held.get("critic_rules") or held["rules"], state.answers,
+                                                        earlier_send_backs(state),
+                                                        _author_notes(state, shot_dir),
+                                                        ledger_block(state, shot_dir, latest_pass(shot_dir, "passes")),
+                                                        config.primary_critic)
     held = {"rules": ""}   # the critics judge with the rules of this stage, read after the animator's run
-    animator = animator or CliSeat(with_dirs(config.animator, [config.refs_library]))
+    animator = animator or CliSeat(with_web(with_dirs(config.animator, [config.refs_library]), config.web))
     state = load_state(shot_dir)
     at_review = False
     if state.status in PAUSED:   # a usage limit or a machine fault: the stage goes on where it paused
@@ -413,7 +568,7 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
             folder_notes += character_folder.draft_notes(
                 character_folder.draft_refs(shot_dir, state.request, config.character))
         prompt = stage_prompt(stage, shot_dir, state.request, carried["gate"], rules,
-                              critic_notes=carried["critics"], author_notes=_author_notes(state, shot_dir),
+                              critic_notes=carried["critics"], author_notes=_animator_notes(state, shot_dir),
                               questions=_open_questions(state), answers=state.answers,
                               character=_character(shot_dir, config), look_at=carried_drawings(state),
                               kei_notes=folder_notes, refs_library=config.refs_library)
@@ -423,15 +578,21 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
         elif reuse is not None and reuse.whole:
             result = SeatResult(0, "reused")   # no seat measures the body again
         else:
-            result = animator.run(prompt, shot_dir)
+            result = _run_animator(animator, prompt, shot_dir, state, stage.id, config.stage_timeouts.get(stage.id))
             if reuse is not None:
                 character_folder.apply_reuse(shot_dir, reuse)   # a reused section the animator dropped is put back
-        entry = {"stage": stage.id, "attempt": state.attempts + 1, "at": _now()}
+        entry = {"stage": stage.id, "attempt": state.attempts + 1, "at": _now(),
+                 **(state.__dict__.pop("last_run", None) or {})}
         if reuse is not None and reuse.whole:
             entry["reused_all"] = True
         kind = pause_kind(result)
         if kind:
             return _pause(shot_dir, state, entry, SeatPaused(kind, animator.name, result.output.strip()))
+        if result.exit_code == 124 and _timeouts(state, stage.id) < MAX_TIMEOUTS:
+            # out of time: the work stays (files, and the resumed session), and the try is not counted
+            state.history.append({**entry, "result": "timeout", "misses": [TIMEOUT_NOTE]})
+            save_state(shot_dir, state)
+            continue
         lost = maya_stage.take_pause(shot_dir)   # the open Maya stopped answering mid-pass: never on in silence
         if lost:
             return _pause(shot_dir, state, entry, SeatPaused("machine", "maya", lost))
@@ -451,17 +612,25 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
             return _ask(shot_dir, state, {**entry, "misses": []},
                         [{"from": "animator", "stage": stage.id, "text": text, "look_at": look_at_paths(text)}])
         if result.exit_code != 0:
-            misses = [result.output.strip() or f"the seat exited with code {result.exit_code}"]
+            misses = [capped(result.output) or f"the seat exited with code {result.exit_code}"]
             entry["result"] = "seat_error"
         else:
             misses = _draw_sheet(shot_dir)
+            records_for_review(shot_dir, stage.id, _character(shot_dir, config))   # the critics read the records
             misses += stage_misses(shot_dir, stage)
             misses += subject_misses(shot_dir, topics, required=stage.id == "brief")
             misses += character_misses(shot_dir)
             misses += target_misses(shot_dir, carried_poses(state))   # the author's feedback pose, if any
             misses += source_misses(shot_dir, config.banned_names)   # names the author banned, kept on their machine
+            if stage.id in ("blocking", "passes", "checks", "self_review", "deliver"):
+                # a fault fixed earlier in the shot that came back fails the try before any critic runs
+                newest = "blocking" if stage.id == "blocking" else latest_pass(shot_dir, "passes")
+                misses += [f"regression of a fixed note: {r}" for r in ledger_regressions(shot_dir, state, newest)]
+            if stage.id in ("passes", "checks", "self_review", "deliver"):
+                misses += refinement_misses(shot_dir)   # a pass that changes nothing, or one keyed on every frame
             if not misses:
                 held["rules"] = _rules(stage.id, shot_dir, topics, lessons, state)
+                held["critic_rules"] = _critic_rules(stage.id, shot_dir, topics, lessons, state, config.book)
                 stop = _too_much(stage.id, held["rules"], config.max_rule_chars)
                 if stop:
                     misses = [stop]
@@ -470,6 +639,12 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
             if not misses and not entry.get("reused_all"):   # a reused evaluation was reviewed when it was made
                 snapshot = read_plan(shot_dir)   # what the critics judge; a later edit is not approved with it
                 changed = plan_changes(shot_dir, state.approved_plan, snapshot)
+                changed += pass_changes(shot_dir, stage.id, state.approved_pass)
+                try:
+                    from kei.record import write_record
+                    write_record(shot_dir, state)      # the bookkeeping, from Kei's state: nobody keeps it by hand
+                except OSError:
+                    pass
                 try:
                     panel = review(stage, shot_dir, changed)
                 except SeatPaused as e:
@@ -483,16 +658,32 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
                 records = list(getattr(panel, "records", []))
                 if records:
                     entry["records"] = records
+                minor = list(getattr(panel, "minor", []))
+                if minor:
+                    entry["minor"] = minor      # read by the animator with a send-back; never a send-back itself
+                judged = list(getattr(panel, "earlier", []))
+                if judged:
+                    entry["earlier"] = [{"from": c, "note": n, "status": st} for c, n, st in judged]
+                    ledger_reopen(state, stage.id, entry["earlier"])
+                    ledger_close(state, stage.id, entry["earlier"], _now())
                 entry["result"] = "send_back" if misses else "pass"
+                if misses and state.send_backs + 1 >= config.send_backs_for(stage.id) \
+                        and config.on_send_back_limit == "advance":
+                    _limit_reached(state, stage.id, config, misses)
+                    entry["result"] = "escalated"      # never silent: the open notes wait at the sign-off
                 if not misses and records and not _had_records_round(state):
                     # only records asked for: a note for the animator's next try, which spends no send-back and no
                     # try; asked again after that round, they go on with the stage
                     entry["result"], entry["notes"] = "records", records
-                if entry["result"] == "pass" and (stage.id == "plan" or changed):
+                if entry["result"] in ("pass", "escalated") and (stage.id == "passes" or
+                                                                 any(c.startswith(PASS_MARK) for c in changed)):
+                    state.approved_pass = pass_stamp(shot_dir)
+                if entry["result"] in ("pass", "escalated") and (stage.id == "plan" or
+                                                                 any(not c.startswith(PASS_MARK) for c in changed)):
                     state.approved_plan = approve_plan(shot_dir, snapshot)
         entry["misses"] = misses
         state.history.append(entry)
-        if entry["result"] == "pass":
+        if entry["result"] in ("pass", "escalated"):
             current = shot_subjects(shot_dir)
             if stage.id == "brief":
                 state.subjects = current   # the set only grows from here
@@ -511,11 +702,11 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
             pass                                   # the stage runs again for the records, its budgets untouched
         elif entry["result"] == "send_back":
             state.send_backs += 1
-            if state.send_backs >= config.max_send_backs:
+            if state.send_backs >= config.send_backs_for(stage.id) and _limit_reached(state, stage.id, config, misses) == "stop":
                 state.status = "needs_human"
         else:
             state.attempts += 1
-            if state.attempts >= config.max_attempts or size_stop:
+            if state.attempts >= config.attempts_for(stage.id) or size_stop:
                 state.status = "needs_human"   # too much rule text goes to a person, never to a retry
         save_state(shot_dir, state)
     return state

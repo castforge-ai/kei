@@ -53,5 +53,5 @@ def test_emission_is_clamped_like_the_export():
 def test_a_shot_without_a_pass_is_refused_even_with_a_character(tmp_path, capsys):
     root = shot_folder(tmp_path)
     assert main(["render", str(root), "--character", "kei", "--out", str(tmp_path / "x")]) == 1
-    assert "pass" in capsys.readouterr().out
+    assert "pass" in "".join(capsys.readouterr())
     assert not (tmp_path / "x").exists()

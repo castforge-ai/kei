@@ -67,7 +67,7 @@ def test_the_browser_opens_unless_no_browser(tmp_path, capsys, served):
 
 def test_a_shot_folder_with_no_state_is_one_line_and_exit_1(tmp_path, capsys):
     assert main(["review", str(tmp_path), "--no-browser"]) == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert len(out.strip().splitlines()) == 1 and "Traceback" not in out and "state" in out
 
 

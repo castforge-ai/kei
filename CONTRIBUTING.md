@@ -28,6 +28,29 @@ That a lesson fixes an animation does not mean you may publish it. Maintainers m
 may decline a contribution whose rights cannot be established. Turning on automatic sharing does not authorise
 sharing your employer's or client's material.
 
+## Developing Kei
+
+    git clone <this repository> && cd kei
+    uv sync                      # Python 3.12+, pytest and pytest-xdist
+    uv run pytest -q -n auto     # the whole suite, about 2 minutes on 16 cores
+    uv run kei demo              # the tools on an approved walk, offline
+
+Maya and Unreal tests skip themselves when the application is not installed. Runtime code uses the standard library
+only. A behaviour change ships with its test and, when the agent uses it, its line in the stage prompts
+(kei/prompts/); `tests/test_prompt_commands.py` fails when a prompt names a kei command that does not exist.
+`uv.lock` is not committed on purpose: Kei has no runtime dependency to pin, and the dev tools float within the
+ranges pyproject.toml gives. Every text file is LF (`.gitattributes`).
+
+### Adding a rule to the book
+
+A rule lives in its topic file in kei/book/ as `### <ID>. <title>`, then a `stages:` line, then the rule in your own
+words with a source tag. Use the next free ID of the topic. Never paste text from a book or a course.
+
+### The maintainers' banned-terms hook
+
+`tools/pre-commit-banned.sh` refuses commits that name terms on the maintainers' private list. It runs only in a
+clone where a maintainer copied it into `.git/hooks`; contributors do not need it.
+
 ## Developer Certificate of Origin 1.1
 
 ```

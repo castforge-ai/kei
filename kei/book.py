@@ -24,6 +24,7 @@ class Rule:
     stages: tuple[str, ...]   # ("all",) means every stage
     text: str
     scope: str = ""           # a local lesson: "this shot" or "every shot" (a rule); "" in the book and older lessons
+    shot: str = ""            # a "this shot" lesson: the shot folder it is about; "" in the book and older lessons
 
 
 def _rule(lines: list[str], source: str) -> Rule:
@@ -42,7 +43,25 @@ def _rule(lines: list[str], source: str) -> Rule:
     scope, body = "", lines[2:]
     if body and body[0].startswith("scope:"):
         scope, body = body[0][len("scope:"):].strip(), body[1:]
-    return Rule(rid, title, stages, "\n".join(body).strip(), scope)
+    shot = ""
+    if scope and body and body[0].startswith("shot:"):
+        shot, body = body[0][len("shot:"):].strip(), body[1:]
+    return Rule(rid, title, stages, "\n".join(body).strip(), scope, shot)
+
+
+THIS_SHOT = "this shot"
+
+
+def shot_key(shot: Path) -> str:
+    """How a "this shot" lesson names its shot: the shot folder's full path, written with forward slashes."""
+    return Path(shot).resolve().as_posix()
+
+
+def lessons_for_shot(lessons: list[Rule], shot: Path) -> list[Rule]:
+    """The local lessons that apply to this shot: every rule, and the "this shot" lessons of this shot only. A
+    "this shot" lesson from before lessons named their shot applies everywhere, as it always did."""
+    key = shot_key(shot)
+    return [r for r in lessons if r.scope != THIS_SHOT or not r.shot or r.shot == key]
 
 
 def parse_book(text: str, source: str) -> list[Rule]:

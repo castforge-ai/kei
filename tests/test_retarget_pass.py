@@ -103,7 +103,7 @@ def test_kei_retarget_refuses_to_overwrite_a_pass(tmp_path, capsys):
     (shot / "out_p2" / "shot.json").write_text("{}", encoding="utf-8")
     assert main(["retarget", str(shot), "p1", "--from", str(old), "--to", "kei", "--out", "p2"]) != 0
     assert (shot / "out_p2" / "shot.json").read_text(encoding="utf-8") == "{}"
-    assert "out_p2" in capsys.readouterr().out
+    assert "out_p2" in "".join(capsys.readouterr())
     with pytest.raises(RetargetError):
         from kei.retarget import retarget_pass
         retarget_pass(shot, "p1", str(old), "kei", "p1")

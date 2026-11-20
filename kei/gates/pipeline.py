@@ -22,7 +22,8 @@ Each miss starts with the code of the stage it belongs to:
                      newer than its shot.json, and each of its flags is fixed or declared under "## Declared" in
                      GATES.md ("- <flag id>: <reason>").
   ORDER              the plan sheet is older than the blocking video, which is older than the newest pass folder.
-  P10 checks         the newest pass out_p<n>/ has body_check/body_check.json, newer than its shot.json.
+  P10 checks         the newest pass out_p<n>/ has body_check/body_check.json, newer than its shot.json, and each of
+                     its hard flags is fixed or declared under "## Declared" ("- <check>.<part>.f<frame>: <reason>").
   P11 self-review    the newest pass has SELF_REVIEW_LOG.md whose last verdict line is READY.
   P12 deliver        (deliver=True) video/*.mp4; REVIEW.md "## What I learned" with a bullet; a GROWTH.md names the
                      shot: in the shot folder, beside it, or, for a shot in a character folder, beside that folder.
@@ -58,11 +59,44 @@ def _gate(gates, name):
 
 
 def _declared(gates):
-    """The principle flag ids declared in GATES.md under "## Declared", one per line with its reason."""
-    m = re.search(r"^## Declared[^\n]*\n(.*?)(?=^## |\Z)", gates or "", re.M | re.S)
-    if not m:
-        return set()
-    return set(re.findall(r"^\s*[-*]\s*`?([a-z_]+\.[a-z_]+\.[\w-]+\.f\d+)`?\s*[:-]\s*\S", m.group(1), re.M))
+    """The principle flag ids declared in GATES.md under "## Declared", one per line with its reason. Every
+    "## Declared" section counts, not only the first."""
+    ids = set()
+    for m in re.finditer(r"^## Declared[^\n]*\n(.*?)(?=^## |\Z)", gates or "", re.M | re.S):
+        # a principle id (principle.kind.part.f<n>) or a body check id (check.part.f<n>)
+        ids |= set(re.findall(r"^\s*[-*]\s*`?([a-z_]+(?:\.[\w-]+){1,2}\.f\d+)`?\s*[:-]\s*\S", m.group(1), re.M))
+    return ids
+
+
+DECLARED_DRIFT = 3   # frames a flag's start may move after a re-key and still be the flag that was declared
+_FLAG_ID = re.compile(r"^(.+)\.f(\d+)$")
+
+
+def open_flags(flags, gates):
+    """The flags not declared in GATES.md. A declaration names a flag by its id, whose last part is the flag's
+    first frame. A re-key that moves that frame by up to DECLARED_DRIFT frames keeps the flag declared, and each
+    declaration covers one flag only: the exact id first, then the nearest frame."""
+    free = {}
+    for d in _declared(gates):
+        m = _FLAG_ID.match(d)
+        if m:
+            free.setdefault(m.group(1), []).append(int(m.group(2)))
+    out, rest = [], []
+    for fl in flags:
+        m = _FLAG_ID.match(fl.get("id") or "")
+        frames = free.get(m.group(1), []) if m else []
+        if m and int(m.group(2)) in frames:
+            frames.remove(int(m.group(2)))
+        else:
+            rest.append((fl, m))
+    for fl, m in rest:
+        frames = free.get(m.group(1), []) if m else []
+        near = sorted(frames, key=lambda f: abs(f - int(m.group(2)))) if m else []
+        if near and abs(near[0] - int(m.group(2))) <= DECLARED_DRIFT:
+            frames.remove(near[0])
+        else:
+            out.append(fl)
+    return out
 
 
 def _passes(J):
@@ -256,12 +290,10 @@ def check(shot: str, deliver: bool = False) -> tuple[list[str], list[str]]:
                     flags = json.load(f).get("flags") or []
             except ValueError:
                 flags = []
-            ids = _declared(gates)
-            for fl in flags:
-                if fl.get("id") not in ids:
-                    miss.append("P9 %s (%s f%s-%s): %s. Fix it, or declare it in GATES.md under \"## Declared\" "
-                                "as \"- %s: <reason>\"" % (fl.get("id"), fl.get("principle"), fl["frames"][0],
-                                                            fl["frames"][1], fl.get("what"), fl.get("id")))
+            for fl in open_flags(flags, gates):
+                miss.append("P9 %s (%s f%s-%s): %s. Fix it, or declare it in GATES.md under \"## Declared\" "
+                            "as \"- %s: <reason>\"" % (fl.get("id"), fl.get("principle"), fl["frames"][0],
+                                                        fl["frames"][1], fl.get("what"), fl.get("id")))
     # ORDER
     ps = J("plan", "plan_sheet.png") if os.path.exists(J("plan", "plan_sheet.png")) else J("plan", "pose_sheet.png")
     if os.path.exists(ps) and os.path.exists(bm) and os.path.getmtime(ps) > os.path.getmtime(bm):
@@ -280,6 +312,18 @@ def check(shot: str, deliver: bool = False) -> tuple[list[str], list[str]]:
         bc, sj = os.path.join(latest, "body_check", "body_check.json"), os.path.join(latest, "shot.json")
         if not (os.path.exists(bc) and (not os.path.exists(sj) or os.path.getmtime(bc) > os.path.getmtime(sj))):
             miss.append("P10 the checks have not run on the latest pass (%s)" % name)
+        else:   # the gate reads Kei's measurement, not a line the agent wrote: every hard fault fixed or declared
+            from kei.explain import body_id
+            try:
+                with open(bc, encoding="utf-8") as f:
+                    body = json.load(f).get("flags") or []
+            except ValueError:
+                body = []
+            hard = [{**fl, "id": body_id(fl)} for fl in body if fl.get("rule") == "hard" and not fl.get("note")]
+            for fl in open_flags(hard, gates):
+                miss.append("P10 %s (f%s-%s): %s. Fix it, or declare it in GATES.md under \"## Declared\" as "
+                            "\"- %s: <reason>\"" % (fl["id"], fl["frames"][0], fl["frames"][1], fl.get("what"),
+                                                     fl["id"]))
         log = _read(os.path.join(latest, "SELF_REVIEW_LOG.md")) or ""
         verdicts = [ln for ln in log.splitlines() if "READY" in ln]
         if not verdicts or "NOT READY" in verdicts[-1]:

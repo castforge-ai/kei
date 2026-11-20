@@ -9,7 +9,7 @@ import os
 import re
 from pathlib import Path
 
-from kei.book import ALL, BookError, parse_book
+from kei.book import ALL, THIS_SHOT, BookError, parse_book, shot_key
 from kei.stages import STAGES
 
 PREAMBLE = "# Local lessons\n\nProvisional lessons from your own notes. They apply to your shots only.\n"
@@ -36,17 +36,42 @@ def scope_name(scope: str) -> str:
     return name
 
 
-def add_lesson(path: Path, note: str, stage_id: str, scope: str = "shot") -> str:
+def _words(text: str) -> str:
+    return " ".join(text.split()).casefold()
+
+
+def same_lesson(path: Path, note: str, stage_id: str, scope: str = "shot", shot: Path | None = None) -> str | None:
+    """The ID of a lesson in the file that already says this note, for the same stage, scope and shot, else None.
+    Spacing and letter case do not make two lessons different."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    scope = scope_name(scope)
+    key = shot_key(shot) if shot is not None and scope == THIS_SHOT else ""
+    words = _words(_body(note))
+    for r in parse_book(path.read_text(encoding="utf-8-sig"), str(path)):
+        if r.stages == (stage_id,) and r.scope == scope and r.shot == key and _words(r.text) == words:
+            return r.id
+    return None
+
+
+def add_lesson(path: Path, note: str, stage_id: str, scope: str = "shot", shot: Path | None = None) -> str:
     """Append the note as a provisional local lesson for one stage (or all), with its scope: this shot (the
-    default) or every shot (a rule, the only kind that can be shared). Returns its local ID."""
+    default) or every shot (a rule, the only kind that can be shared). shot: the shot a "this shot" lesson is
+    about, so it reaches no other shot. A note the file already holds is not written again: its lesson's ID comes
+    back instead (same_lesson). Returns the local ID."""
     scope = scope_name(scope)
     if stage_id != ALL and stage_id not in {s.id for s in STAGES}:
         raise BookError(f"unknown stage {stage_id!r}: use one of {', '.join(s.id for s in STAGES)}, or all")
     path = Path(path)
+    held = same_lesson(path, note, stage_id, scope, shot)
+    if held is not None:
+        return held
     old = path.read_text(encoding="utf-8-sig") if path.is_file() else PREAMBLE
     n = max((int(m) for m in _LOCAL_ID.findall(old)), default=0) + 1
     lesson_id = f"local.{n}"
-    block = (f"### {lesson_id}. {_title(note)} (provisional)\nstages: {stage_id}\nscope: {scope}\n\n"
+    shot_line = f"shot: {shot_key(shot)}\n" if shot is not None and scope == THIS_SHOT else ""
+    block = (f"### {lesson_id}. {_title(note)} (provisional)\nstages: {stage_id}\nscope: {scope}\n{shot_line}\n"
              f"{_body(note)}\n")
     new = old.rstrip("\n") + "\n\n" + block
     parse_book(new, str(path))   # refuse a write that would leave the file unreadable

@@ -13,9 +13,10 @@ The control rig (built by kei_control_rig.py in Maya) is the one an animator mov
   <s>_leg_settings_ctl, <s>_arm_settings_ctl   ikFk (0 FK, 1 IK) and stretch (Kei's legS, armS)
 Sides: l is the character's left, r its right, c the centre.
 
-Kei keys whole poses on the controls: the FK controls always (so a switch to FK never pops), the leg IK as well (Kei's
-legs are IK: ikFk 1), the arm IK matched to the FK arm (ikFk 0, Kei's arms are FK). Values are degrees and the
-scene's linear unit.
+Kei keys whole poses on the controls: the FK controls and the IK controls always, both on the solved pose, so a switch
+either way never pops. ikFk follows Kei's own switches: a leg is 1 (IK) less its legFK weight, an arm is its ik
+weight (0 FK). With an FK leg the foot IK control goes where the FK ankle is. Values are degrees and the scene's
+linear unit.
 """
 from __future__ import annotations
 
@@ -208,7 +209,14 @@ def pose_to_controls(pose: dict, rig: dict, rest: Rest | None = None, near: dict
         S = s.upper()
         foot, roll, leg = p["foot" + S], p["roll" + S], rest.job["legs"][s]
         G0 = km.euler_matrix([math.radians(a) for a in leg["frame_deg"]], ROTATE_ORDERS["foot_ik"][0])
-        A = km.mirror_point(foot[:3])
+        fk_w = float(p["legFK" + S][4])
+        if fk_w > 0:     # an FK leg moved the ankle off the foot target: the foot IK control goes where the ankle is
+            from kei.rig import solve as _solve
+            off = dict(p, **{"legFK" + S: [*p["legFK" + S][:4], 0.0]})
+            got, was = _solve(p)[f"foot_{s}"], _solve(off)[f"foot_{s}"]
+            A = km.mirror_point([foot[i] + got[i] - was[i] for i in range(3)])
+        else:
+            A = km.mirror_point(foot[:3])
         move(f"{s}_foot_ik_ctl", km.apply(km.transpose(G0), [A[i] - leg["ankle"][i] for i in range(3)]))
         rot(f"{s}_foot_ik_ctl", km.mul(km.transpose(G0), _foot_frame(foot)), ROTATE_ORDERS["foot_ik"][0])
         for attr, v in (("roll", math.degrees(roll[0])), ("bank", math.degrees(roll[1])),
@@ -217,7 +225,7 @@ def pose_to_controls(pose: dict, rig: dict, rest: Rest | None = None, near: dict
             put(f"{s}_foot_ik_ctl", attr, v)
         knee, z = W[f"calf_{s}"][1], km.mirror_point(Bk[f"thigh_{s}"].frame[2])
         move(f"{s}_leg_pv_ctl", [knee[i] + z[i] * POLE_M - leg["pole"][i] for i in range(3)])
-        put(f"{s}_leg_settings_ctl", "ikFk", 1.0)
+        put(f"{s}_leg_settings_ctl", "ikFk", 1.0 - fk_w)     # Kei's legs are IK unless legFK blends them
         put(f"{s}_leg_settings_ctl", "stretch", float(p["legS" + S]))
         # arms: FK (ikFk 0), the IK control and pole matched to the FK arm
         arm = rest.job["arms"][s]
@@ -227,7 +235,7 @@ def pose_to_controls(pose: dict, rig: dict, rest: Rest | None = None, near: dict
         rot(f"{s}_arm_ik_ctl", km.mul(km.transpose(H0), Rh), ROTATE_ORDERS["arm_ik"][0])
         elbow, uz = W[f"lowerarm_{s}"][1], km.mirror_point(Bk[f"upperarm_{s}"].frame[2])
         move(f"{s}_arm_pv_ctl", [elbow[i] - uz[i] * POLE_M - arm["pole"][i] for i in range(3)])
-        put(f"{s}_arm_settings_ctl", "ikFk", 0.0)
+        put(f"{s}_arm_settings_ctl", "ikFk", float(min(1.0, max(0.0, p["ik" + S][3]))))   # Kei's arm IK weight
         put(f"{s}_arm_settings_ctl", "stretch", float(p["armS" + S]))
     put("c_body_ctl", "squash", float(p["sq"]))
     put("c_body_ctl", "neckStretch", float(p["neckS"]))

@@ -1,4 +1,5 @@
 """Test helpers for the review page: fake rounds on disk and a client that logs in like the page does."""
+import re
 import hashlib
 import http.client
 import json
@@ -48,6 +49,10 @@ class PageClient:
         self.host = f"127.0.0.1:{self.port}"
         r, _ = self._send("GET", f"/?t={self.token}", None, {})
         self.cookie = r.getheader("Set-Cookie").split(";")[0]
+        r, page = self._send("GET", "/", None, {"Cookie": self.cookie})     # the page's own token, as the page reads it
+        found = re.search(rb'<meta name="kei-token" content="([\w-]+)">', page)
+        if found:
+            self.token = found.group(1).decode("ascii")
 
     def _send(self, method, path, body, headers):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)

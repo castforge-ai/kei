@@ -1,0 +1,21 @@
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        python: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: FedericoCarboni/setup-ffmpeg@v3
+      - run: uv python install ${{ matrix.python }}
+      - run: uv sync --python ${{ matrix.python }}
+      # Maya and Unreal tests skip themselves when the application is not installed
+      - run: uv run pytest -q -n auto

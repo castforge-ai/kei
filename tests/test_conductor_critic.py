@@ -219,15 +219,53 @@ def test_earlier_send_backs_are_capped_to_the_latest(tmp_path):
     assert f"note {EARLIER_MAX + 2}" in p and "note 0\n" not in p and "3 older" in p
 
 
-def test_retry_note_reaches_the_critics(tmp_path):
+def test_a_retry_note_is_for_the_animator_and_the_critics_do_not_judge_against_it(tmp_path):
     from kei.cli import main
     root = _stopped_after_send_backs(tmp_path)
     assert main(["retry", str(root), "--note", "keep the contacts, lift the passings"]) == 0
     c2 = critic("c2", always_pass)
     run_shot(root, "a box falls", CFG, animator=FakeSeat("fake", Recorder()), critics=[c2])
     plan = next(p for p in c2.prompts if "Stage under review: Plan" in p)
-    assert "keep the contacts, lift the passings" in plan
-    assert "The author's notes for this stage" in plan
+    assert "keep the contacts, lift the passings" not in plan
+
+
+def _cfg(**kw):
+    from dataclasses import replace
+    return replace(CFG, **kw)
+
+
+def test_on_the_limit_retry_runs_the_stage_again_with_the_retry_note_then_stops(tmp_path):
+    root = shot(tmp_path)
+    c = critic("c1", lambda t, p: SEND_BACK if t == "Plan" else PASS)
+    rec = Recorder()
+    cfg = _cfg(on_send_back_limit="retry", auto_retries=1, retry_note="apply every note and go on")
+    state = run_shot(root, "a box falls", cfg, animator=FakeSeat("fake", rec), critics=[c])
+    results = [h["result"] for h in state.history if h["stage"] == "plan"]
+    assert results == ["send_back"] * 3 + ["auto_retry"] + ["send_back"] * 3
+    assert (state.status, state.stage) == ("needs_human", "plan")
+    assert sum("apply every note and go on" in p for p in rec.prompts) == 3, "the three tries after the retry"
+    assert all("apply every note and go on" not in p for p in c.prompts)
+
+
+def test_on_the_limit_advance_moves_the_open_notes_to_the_sign_off_and_goes_on(tmp_path):
+    root = shot(tmp_path)
+    c = critic("c1", lambda t, p: SEND_BACK if t == "Plan" else PASS)
+    state = run_shot(root, "a box falls", _cfg(on_send_back_limit="advance"), animator=FakeSeat("fake", Recorder()),
+                     critics=[c])
+    results = [h["result"] for h in state.history if h["stage"] == "plan"]
+    assert results == ["send_back", "send_back", "escalated"]
+    assert state.stage != "plan" and state.status != "needs_human"
+    assert any("left open at plan" in s["check"] and "hips sink too late" in s["check"] for s in state.sign_off)
+
+
+def test_a_bad_send_back_policy_is_refused(tmp_path):
+    from kei.config import ConfigError, example_config, load_config
+    cfg = tmp_path / "kei.toml"
+    text = example_config().read_text(encoding="utf-8")
+    assert "\n[limits]\n" in text
+    cfg.write_text(text.replace("\n[limits]\n", '\n[limits]\non_send_back_limit = "ignore"\n'), encoding="utf-8")
+    with pytest.raises(ConfigError, match="on_send_back_limit"):
+        load_config(cfg)
 
 
 RECORDS_ONLY = json.dumps({"verdict": "send_back", "notes": [], "records": [

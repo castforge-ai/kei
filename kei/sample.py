@@ -4,7 +4,9 @@ A shot: {"rig": "v4", "fps", "frames", "loop", "keys": [{"f", "tangent", ...chan
 channel: it carries over from the key before, and the first key's missing channels take the default stand.
 
 Modes: "step" holds each key (blocking), "linear" interpolates straight, "spline" is a Hermite curve with "auto"
-tangents (from the neighbour keys) or "flat" ones. A loop wraps its frames. A travelling loop keys its last key on
+tangents (from the neighbour keys) or "flat" ones. Auto tangents are clamped channel by channel: a peak, a dip or the
+edge of a hold eases flat, and no curve passes beyond its keys, so a held pose stays held. A shot with
+"tangents": "free" keeps the kit's unclamped tangents. A loop wraps its frames. A travelling loop keys its last key on
 f = frames with the root and the feet moved forward by one cycle; the auto tangents at the seam take that travel out
 of the wrapped neighbours, so the seam is not eased by accident.
 """
@@ -25,7 +27,7 @@ def _travel_index() -> dict[int, int]:
     """Flat indices of the world travel numbers (x and z of root, the ankle targets and the IK targets)."""
     out, i = {}, 0
     for c in CHANNELS:
-        if c in ("root", "footL", "footR", "ikL", "ikR"):
+        if c in ("root", "footL", "footR", "ikL", "ikR", "poleL", "poleR"):   # world points travel with a loop
             out[i], out[i + 2] = 0, 2
         i += SIZE[c]
     return out
@@ -122,6 +124,32 @@ def cycle_travel(shot: dict, keys: list[dict]) -> tuple[float, float, float]:
     return (b["root"][0] - a["root"][0], 0, b["root"][2] - a["root"][2])
 
 
+def _clamp(free: list[float], fa: float, f: float, fb: float, va, v, vb) -> list[float]:
+    """Clamped (monotone) tangents, channel by channel: a key that is a peak, a dip or the edge of a hold gets a flat
+    tangent, and every other slope is held within 3x either neighbouring secant, so the curve never passes beyond a key
+    (Fritsch-Carlson). A held pose stays held and nothing overshoots its keys (SPC26)."""
+    out = []
+    for j, m in enumerate(free):
+        dl = (v[j] - va[j]) / (f - fa) if f > fa else None
+        dr = (vb[j] - v[j]) / (fb - f) if fb > f else None
+        if dl is not None and dr is not None:
+            if dl * dr <= 0:
+                out.append(0.0)
+                continue
+            lim = 3 * min(abs(dl), abs(dr))
+        else:
+            one = dl if dl is not None else dr
+            if one is None or one == 0:
+                out.append(0.0)
+                continue
+            if m * one <= 0:
+                out.append(0.0)
+                continue
+            lim = 3 * abs(one)
+        out.append(math.copysign(min(abs(m), lim), m))
+    return out
+
+
 def sampler(shot: dict, mode: str) -> Callable[[float], dict]:
     """A function from a frame (any number) to a full pose."""
     keys = normalize_keys(shot)
@@ -132,6 +160,8 @@ def sampler(shot: dict, mode: str) -> Callable[[float], dict]:
     def shift(v, sign):
         return [x + sign * travel[TRAVEL_IDX[j]] if j in TRAVEL_IDX else x for j, x in enumerate(v)]
 
+    clamped = shot.get("tangents", "clamped") != "free"
+    closed = keys[-1]["f"] == n and keys[0]["f"] == 0   # a loop whose last key repeats its first on f = frames
     tans = []
     for i, k in enumerate(keys):
         if k["tangent"] == "flat":
@@ -139,22 +169,43 @@ def sampler(shot: dict, mode: str) -> Callable[[float], dict]:
             continue
         if i - 1 >= 0:
             fa, va = keys[i - 1]["f"], vals[i - 1]
-        elif loop and len(keys) > 2:
+        elif loop and closed and len(keys) > 2:      # the closing key repeats this one: the one before it
             fa, va = keys[-2]["f"] - n, shift(vals[-2], -1)
+        elif loop and not closed and len(keys) > 1:  # an open loop: the last key, one cycle back
+            fa, va = keys[-1]["f"] - n, shift(vals[-1], -1)
         else:
             fa, va = k["f"], vals[i]
         if i + 1 < len(keys):
             fb, vb = keys[i + 1]["f"], vals[i + 1]
-        elif loop and len(keys) > 2:
+        elif loop and closed and len(keys) > 2:
             fb, vb = keys[1]["f"] + n, shift(vals[1], 1)
+        elif loop and not closed and len(keys) > 1:
+            fb, vb = keys[0]["f"] + n, shift(vals[0], 1)
         else:
             fb, vb = k["f"], vals[i]
         df = fb - fa
-        tans.append([(vb[j] - va[j]) / df if df > 0 else 0 for j in range(len(vals[i]))])
+        free = [(vb[j] - va[j]) / df if df > 0 else 0 for j in range(len(vals[i]))]
+        tans.append(free if not clamped else _clamp(free, fa, k["f"], fb, va, vals[i], vb))
+
+    def hermite(fa, va, ta, fb, vb, tb, f):
+        d = fb - fa
+        u = (f - fa) / d if d > 0 else 0
+        if mode == "linear":
+            return _unflat([x + (y - x) * u for x, y in zip(va, vb)])
+        h00, h10 = 2 * u ** 3 - 3 * u * u + 1, u ** 3 - 2 * u * u + u
+        h01, h11 = -2 * u ** 3 + 3 * u * u, u ** 3 - u * u
+        return _unflat([h00 * va[j] + h10 * d * ta[j] + h01 * vb[j] + h11 * d * tb[j] for j in range(len(va))])
 
     def at(f: float) -> dict:
         if loop:
             f = f % n
+            if len(keys) > 1 and not closed and (f < keys[0]["f"] or f > keys[-1]["f"]):
+                # across the wrap: from the last key to the first key of the next cycle
+                fa, fb = keys[-1]["f"], keys[0]["f"] + n
+                g = f if f > keys[-1]["f"] else f + n
+                if mode == "step":
+                    return _unflat(vals[-1])
+                return hermite(fa, vals[-1], tans[-1], fb, shift(vals[0], 1), tans[0], g)
         f = max(keys[0]["f"], min(keys[-1]["f"], f))
         i = 0
         while i < len(keys) - 2 and f >= keys[i + 1]["f"]:
@@ -226,10 +277,43 @@ def _lift(shot: dict):
 LIFT_RANGE = 0.08
 
 
+def _gripped(shot: dict, at):
+    """While a hand holds an object that has its own path and grip points, the hand's IK target is its grip point
+    on the object on every frame (kei.objects.grip_targets): the grip is solved at bake, so it never drifts."""
+    objs = shot.get("objects")
+    if not isinstance(objs, list) or not any(isinstance(o, dict) and o.get("path") and o.get("grip") for o in objs):
+        return at
+    from kei.objects import grip_targets
+
+    def f(t):
+        p = at(t)
+        p.update(grip_targets(shot, t))
+        return p
+    return f
+
+
+_BAKED: dict = {}
+BAKE_CACHE = 8      # shots kept baked in this process: kei check, poses and render on one pass bake it once
+
+
 def bake(shot: dict, mode: str = "spline") -> list[dict]:
-    """Frames 0..frames: {"f", "pose", "joints"} each."""
-    at, pr = _lift(shot)(sampler(shot, mode)), _proportions(shot)
-    return [{"f": f, "pose": (p := at(f)), "joints": solve(p, pr)} for f in range(shot["frames"] + 1)]
+    """Frames 0..frames: {"f", "pose", "joints"} each. A shot baked before in this process, the same keys, settings
+    and mode, comes back from memory (a copy: a caller may change what it gets)."""
+    import copy
+    import hashlib
+    try:
+        key = hashlib.sha256(json.dumps([shot, mode], sort_keys=True).encode("utf-8")).hexdigest()
+    except (TypeError, ValueError):
+        key = None
+    if key is not None and key in _BAKED:
+        return copy.deepcopy(_BAKED[key])
+    at, pr = _lift(shot)(_gripped(shot, sampler(shot, mode))), _proportions(shot)
+    frames = [{"f": f, "pose": (p := at(f)), "joints": solve(p, pr)} for f in range(shot["frames"] + 1)]
+    if key is not None:
+        if len(_BAKED) >= BAKE_CACHE:
+            _BAKED.pop(next(iter(_BAKED)))
+        _BAKED[key] = copy.deepcopy(frames)
+    return frames
 
 
 def bake_continuous(shot: dict) -> list[dict]:

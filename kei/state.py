@@ -21,6 +21,9 @@ class ShotState:
     attempts: int = 0
     send_backs: int = 0
     approved_plan: dict | None = None   # hashes of the plan files the panel passed
+    approved_pass: dict | None = None   # the newest pass the panel passed: {"pass": "p9", "sha256": ...}
+    ledger: list = field(default_factory=list)   # critic notes judged fixed: stage, note, frames (kei.ledger)
+    sessions: dict = field(default_factory=dict)  # stage -> the animator's Claude Code session, resumed on each try
     subjects: list | None = None        # the subject topics named at the brief; None means every subject
     status: str = "running"
     request: str = ""

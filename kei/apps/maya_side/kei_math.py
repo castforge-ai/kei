@@ -114,3 +114,30 @@ def local(parent_rot, parent_pos, child_rot, child_pos):
     Pt = transpose(parent_rot)
     d = tuple(child_pos[n] - parent_pos[n] for n in range(3))
     return apply(Pt, d), mul(Pt, child_rot)
+
+
+def clamped_slopes(fs, vs):
+    """Kei's clamped spline slopes (value per frame) for one curve's keys, as kei.sample does channel by channel: the
+    neighbour slope, flat at a peak, a dip or the edge of a hold, and held within 3x either neighbouring secant, so the
+    curve never passes beyond a key (Fritsch-Carlson)."""
+    out = []
+    n = len(fs)
+    for i in range(n):
+        fa, va = (fs[i - 1], vs[i - 1]) if i > 0 else (fs[i], vs[i])
+        fb, vb = (fs[i + 1], vs[i + 1]) if i + 1 < n else (fs[i], vs[i])
+        m = (vb - va) / (fb - fa) if fb > fa else 0.0
+        dl = (vs[i] - va) / (fs[i] - fa) if fs[i] > fa else None
+        dr = (vb - vs[i]) / (fb - fs[i]) if fb > fs[i] else None
+        if dl is not None and dr is not None:
+            if dl * dr <= 0:
+                out.append(0.0)
+                continue
+            lim = 3 * min(abs(dl), abs(dr))
+        else:
+            one = dl if dl is not None else dr
+            if not one or m * one <= 0:
+                out.append(0.0)
+                continue
+            lim = 3 * abs(one)
+        out.append(math.copysign(min(abs(m), lim), m))
+    return out

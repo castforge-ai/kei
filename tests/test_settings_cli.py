@@ -22,7 +22,7 @@ def here(tmp_path, monkeypatch):
 
 def run(capsys, *args):
     code = main(["settings", *args])
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert "Traceback" not in out
     return code, out
 

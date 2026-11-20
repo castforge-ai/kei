@@ -49,7 +49,7 @@ def test_kei_answer_takes_the_number_and_refuses_one_out_of_range(tmp_path, caps
     with ed.server() as fake:
         run_shot(root, "a walk", cfg_for(fake), animator=FakeSeat("fake", lambda p, r: SeatResult(0, "")))
         assert main(["answer", str(root), "--text", "9"]) == 1
-        assert "from 1 to 2" in capsys.readouterr().out and load_state(root).status == "needs_answer"
+        assert "from 1 to 2" in "".join(capsys.readouterr()) and load_state(root).status == "needs_answer"
         assert main(["answer", str(root), "--text", "1"]) == 0
     target = json.loads((root / "unreal" / "target.json").read_text())
     assert target == {"kind": "open", "url": fake.url, "project": "ThirdPersonTest"}
@@ -194,20 +194,20 @@ def test_the_commands_key_render_and_bake_a_pass_end_to_end(tmp_path, capsys):
         assert unreal_stage.prepare(root, load_config(toml)) is None
         write_unreal_shot(root, "blocking")
         assert main(["unreal", "key", str(root), "blocking", "--config", str(toml)]) == 0
-        out = capsys.readouterr().out
+        out = "".join(capsys.readouterr())
         assert "saved /Game/Kei/walk_01/LS_walk_01_blocking_1" in out and "joints.json" in out
         assert (root / "out_blocking" / "joints.json").is_file()
         assert main(["render", str(root), "blocking", "--size", "48"]) == 0
-        assert "renderer: kei" in capsys.readouterr().out
+        assert "renderer: kei" in "".join(capsys.readouterr())
         assert main(["bake", str(root), "blocking"]) == 1          # kei bake would replace Unreal's joints
-        assert "is an Unreal shot" in capsys.readouterr().out
+        assert "is an Unreal shot" in "".join(capsys.readouterr())
         # an export before sign-off is refused; after it, the bake runs and is checked
         save_state(root, ShotState(stage="deliver", status="needs_approval"))
         assert main(["export", "--shot", str(root), "--pass", "blocking", "--to", "unreal"]) == 1
-        assert "approved shot" in capsys.readouterr().out
+        assert "approved shot" in "".join(capsys.readouterr())
         save_state(root, ShotState(stage="deliver", status="done"))
         assert main(["export", "--shot", str(root), "--pass", "blocking", "--to", "unreal"]) == 0
-        assert "every ik_ bone follows its bone on every frame" in capsys.readouterr().out
+        assert "every ik_ bone follows its bone on every frame" in "".join(capsys.readouterr())
 
 
 def test_kei_unreal_setup_prints_every_step(capsys):

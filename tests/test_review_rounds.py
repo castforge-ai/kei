@@ -93,4 +93,4 @@ def test_a_shot_with_no_pass_is_refused_in_plain_words(tmp_path):
 def test_a_seen_mark_does_not_change_what_the_next_try_reads():
     from kei.conductor import carried_notes
     s = ShotState(stage="deliver", history=[{"stage": "deliver", "result": "seen", "round": "r1", "misses": []}])
-    assert carried_notes(s) == {"gate": [], "critics": [], "author": []}
+    assert carried_notes(s) == {"gate": [], "critics": [], "author": [], "animator": []}

@@ -1,4 +1,4 @@
-"""kei retarget: a pass made for a character's old proportions, played on new ones (a re-imported model).
+"""kei refit-pass (kei retarget before): a pass made for a character's old proportions, played on new ones (a re-imported model).
 
 A pass's foot targets and root are absolute world positions, authored for the leg and foot of the character at the
 time. When the character changes (a new ankle height, a shorter thigh, a longer toe), the same numbers put the soles
@@ -211,7 +211,7 @@ def retarget_shot(shot: dict, old: Character, new: Character, source: str, when:
 
     def m(v: float) -> str:
         return f"{v:+.4f}"
-    words = (f"retargeted from {source} to the character {new.name} on {when} (kei retarget): foot target heights "
+    words = (f"retargeted from {source} to the character {new.name} on {when} (kei refit-pass): foot target heights "
              f"{m(ankle)} m (ankle height {po['ankleH']} -> {pn['ankleH']}), root height {m(root)} m (standing "
              f"root, ankle + calf + thigh + hip drop, {standing_root(old):.5f} -> {standing_root(new):.5f})")
     if offsets:
@@ -255,7 +255,7 @@ def retarget_pass(shot_dir, pass_name: str, from_spec: str, to: str | None, out_
     src = shot_dir / f"out_{pass_name}" / "shot.json"
     dst_dir = shot_dir / f"out_{out_name}"
     if dst_dir.exists():
-        raise RetargetError(f"{dst_dir} exists: kei retarget never overwrites a pass; name a new one with --out")
+        raise RetargetError(f"{dst_dir} exists: kei refit-pass never overwrites a pass; name a new one with --out")
     if not src.is_file():
         raise RetargetError(f"no {src}")
     shot = read_json(src, "shot")

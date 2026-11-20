@@ -49,7 +49,7 @@ def test_kei_answer_takes_the_choice_by_number_and_refuses_one_out_of_range(tmp_
     root = shot(tmp_path)
     run_shot(root, "a walk", MAYA, animator=FakeSeat("fake", lambda p, r: SeatResult(0, "")))
     assert main(["answer", str(root), "--text", "7"]) == 1
-    assert "from 1 to 2" in capsys.readouterr().out
+    assert "from 1 to 2" in "".join(capsys.readouterr())
     assert load_state(root).status == "needs_answer"
     assert main(["answer", str(root), "--text", "1"]) == 0
     target = json.loads((root / "maya" / "target.json").read_text())

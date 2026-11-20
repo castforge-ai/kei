@@ -40,17 +40,17 @@ def test_pose_with_an_unknown_channel_exits_1(tmp_path, capsys):
     p = tmp_path / "pose.json"
     p.write_text(json.dumps({"armRight": [1.5, 0.2, 0]}), encoding="utf-8")
     assert main(["pose", str(p)]) == 1
-    assert "armRight" in capsys.readouterr().out
+    assert "armRight" in "".join(capsys.readouterr())
 
 
 def test_pose_missing_file_exits_1(tmp_path, capsys):
     assert main(["pose", str(tmp_path / "none.json")]) == 1
-    assert capsys.readouterr().out.startswith("kei: ")
+    assert "".join(capsys.readouterr()).startswith("kei: ")
 
 
 def test_render_blocking_end_to_end(tmp_path, capsys):
     root = shot_dir(tmp_path)
-    assert main(["render", str(root), "blocking"]) == 0
+    assert main(["render", str(root), "blocking", "--size", "48"]) == 0
     out = root / "out_blocking"
     said = capsys.readouterr().out
     playback = [p for p in (out / "blocking.mp4", out / "blocking.gif") if p.is_file()]
@@ -64,34 +64,34 @@ def test_render_blocking_end_to_end(tmp_path, capsys):
 
 def test_render_defaults_to_step_for_blocking_and_spline_after(tmp_path, capsys):
     root = shot_dir(tmp_path)
-    main(["render", str(root), "blocking"])
+    main(["render", str(root), "blocking", "--size", "48"])
     assert "mode step" in capsys.readouterr().out
     (root / "out_p1").mkdir()
     (root / "out_p1" / "shot.json").write_text(json.dumps(WALK), encoding="utf-8")
-    main(["render", str(root), "p1"])
+    main(["render", str(root), "p1", "--size", "48"])
     assert "mode spline" in capsys.readouterr().out
-    main(["render", str(root), "p1", "--mode", "linear"])
+    main(["render", str(root), "p1", "--mode", "linear", "--size", "48"])
     assert "mode linear" in capsys.readouterr().out
 
 
 def test_render_without_a_shot_json_exits_1(tmp_path, capsys):
     (tmp_path / "s").mkdir()
     assert main(["render", str(tmp_path / "s"), "blocking"]) == 1
-    assert "shot.json" in capsys.readouterr().out
+    assert "shot.json" in "".join(capsys.readouterr())
 
 
 def test_render_a_bad_key_exits_1_and_names_it(tmp_path, capsys):
     bad = {**WALK, "keys": [{"f": 0}, {"f": 5, "elbowLeft": [0.5, 0]}]}
     root = shot_dir(tmp_path, shot=bad)
     assert main(["render", str(root), "blocking"]) == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert "elbowLeft" in out and "f 5" in out
 
 
 def test_render_a_shot_that_is_not_v4_exits_1(tmp_path, capsys):
     root = shot_dir(tmp_path, shot={**WALK, "rig": "v2"})
     assert main(["render", str(root), "blocking"]) == 1
-    assert "v4" in capsys.readouterr().out
+    assert "v4" in "".join(capsys.readouterr())
 
 
 BAD_SHOTS = {
@@ -120,8 +120,8 @@ def test_a_bad_shot_gives_one_line_and_exits_1(tmp_path, capsys, cmd, case):
     root = shot_dir(tmp_path, "p1", shot)
     assert main([cmd, str(root), "p1"]) == 1
     out = capsys.readouterr()
-    assert out.out.startswith("kei: ") and len(out.out.strip().splitlines()) == 1 and word in out.out
-    assert "Traceback" not in out.err
+    assert out.err.startswith("kei: ") and len(out.err.strip().splitlines()) == 1 and word in out.err
+    assert "Traceback" not in out.err and out.out == ""
 
 
 @pytest.mark.parametrize("cmd", ["render", "bake"])
@@ -130,7 +130,7 @@ def test_a_truncated_shot_json_gives_one_line_and_exits_1(tmp_path, capsys, cmd)
     src = root / "out_p1" / "shot.json"
     src.write_text(src.read_text(encoding="utf-8")[:57], encoding="utf-8")
     assert main([cmd, str(root), "p1"]) == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert out.startswith("kei: ") and len(out.strip().splitlines()) == 1 and "JSON" in out
 
 

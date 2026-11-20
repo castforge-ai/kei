@@ -47,7 +47,7 @@ def _sharer(shot: Path, config: Config):
     private = [str(Path(shot).resolve()), Path(shot).resolve().name]   # the shot's path and its folder name
     private += [n for n in imported_characters()]   # an imported character is the user's own
     return Sharer(shot, config.lessons, config.share, seat=lambda: CliSeat(config.animator), private=private,
-                  repo=config.share_repo)
+                  repo=config.share_repo, sign_off=config.share_sign_off == "on")
 
 
 def settings_routes(target: Path, shown: Path | None = None) -> dict:
@@ -64,7 +64,7 @@ def shot_server(shot: Path, config: Config, size: int = 360, port: int = 0, extr
     before = before_round(shot, after, size=size, character=config.character)
     routes = SignOffRoutes(shot, config.lessons, after, before, sharer=_sharer(shot, config))
     server = ReviewServer({**routes.routes, **settings_routes(settings or Path.cwd() / "kei.toml", shown),
-                           **(extra or {})}, routes.files, port=port)
+                           **(extra or {})}, routes.files, port=port, single_use_link=True)
     server.routes["POST /api/close"] = _closer(server)
     return server, routes
 
@@ -101,7 +101,7 @@ def list_server(root: Path, port: int = 0, extra: dict | None = None, settings: 
     mode = {"mode": "list", "shots": shots, "lessons": lessons}
     server = ReviewServer({"GET /api/mode": lambda req: (200, mode),
                            **settings_routes(settings or Path(root) / "kei.toml", shown), **(extra or {})},
-                          lambda: {}, port=port)
+                          lambda: {}, port=port, single_use_link=True)
     server.routes["POST /api/close"] = _closer(server)
     return server, mode
 
@@ -153,7 +153,8 @@ def lesson_server(a, config_path: Path) -> ReviewServer:
         bundle = Path(a.lesson)
         routes = LessonRoutes(bundle, config.book, bundle.resolve().parent.parent / "renders", size=a.size)
     target = Path(a.config) if a.config else Path.cwd() / "kei.toml"
-    server = ReviewServer({**routes.routes, **settings_routes(target, config_path)}, routes.files, port=a.port)
+    server = ReviewServer({**routes.routes, **settings_routes(target, config_path)}, routes.files, port=a.port,
+                          single_use_link=True)
     server.routes["POST /api/close"] = _closer(server)
     print(f"lesson {routes.rule.id}: {routes.rule.title}" + (" (Kei's numbers differ from the bundle's)"
                                                               if routes.lesson()["any_differs"] else ""))

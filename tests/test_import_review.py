@@ -273,7 +273,7 @@ def test_import_with_a_model_and_confirm_is_refused_and_approves_nothing(tmp_pat
     main(["import", str(src), "--name", "scan", "--height", "1.71"])
     capsys.readouterr()
     assert main(["import", str(src), "--name", "scan", "--confirm"]) == EXIT_ERROR
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert "--confirm" in out and "model" in out
     assert not load_character("scan").confirmed
 

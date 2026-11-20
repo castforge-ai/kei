@@ -39,11 +39,33 @@ def test_any_send_back_wins(tmp_path):
     assert out == ["critic b: arm pops f22"]
 
 
-def test_a_failing_critic_fails_closed(tmp_path):
+def test_a_critic_that_cannot_answer_pauses_the_stage_and_costs_no_send_back(tmp_path):
+    import pytest
+    from kei.seats import SeatPaused
     full(tmp_path, upto="blocking")
+    calls = []
+    with pytest.raises(SeatPaused) as e:
+        panel_review(stage_by_id("blocking"), tmp_path, "a box falls",
+                     [critic("codex", SeatResult(1, "Traceback: boom"), calls)])
+    assert e.value.kind == "machine" and "could not give a verdict" in e.value.output
+    assert len(calls) == 2, "asked once more before pausing"
+
+
+def test_a_critic_with_no_verdict_is_asked_for_the_verdict_line_alone(tmp_path):
+    full(tmp_path, upto="blocking")
+    answers = iter(["All good, I think.", PASS])
+    calls = []
     out = panel_review(stage_by_id("blocking"), tmp_path, "a box falls",
-                       [critic("codex", SeatResult(127, "command not found: codex"))])
-    assert out == ["critic codex: command not found: codex"]
+                       [FakeSeat("codex", lambda prompt, root: (calls.append(prompt), SeatResult(0, next(answers)))[1])])
+    assert out == [] and "only the one JSON verdict line" in calls[1]
+
+
+def test_a_timeout_then_an_answer_is_judged_as_the_answer(tmp_path):
+    full(tmp_path, upto="blocking")
+    answers = iter([SeatResult(124, "timeout after 1800 s"), SeatResult(0, PASS)])
+    out = panel_review(stage_by_id("blocking"), tmp_path, "a box falls",
+                       [FakeSeat("codex", lambda prompt, root: next(answers))])
+    assert out == []
 
 
 def test_plan_change_brings_a_late_stage_to_review(tmp_path):

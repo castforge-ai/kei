@@ -155,6 +155,7 @@ def test_a_critic_with_badly_worded_checks_is_asked_once_more(tmp_path):
     assert [i["check"] for i in state.sign_off] == ["Frame 9-12: the landing reads heavy"]
     retry = [p for p in c.prompts if "Stage under review: Blocking" in p][1]
     assert "BLK42: play out_blocking/blocking_x10.mp4" in retry and "12 words" in retry
+    assert len(retry) < 2000 and "Rules for this stage" not in retry   # a short call: the rules are not sent again
 
 
 def test_a_critic_that_keeps_the_wrong_wording_sends_the_stage_back_naming_why(tmp_path):

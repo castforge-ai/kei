@@ -38,6 +38,8 @@ The channels (metres, radians; x is the character's right, y up, z forward):
 | toeL, toeR | one | extra bend of the toes |
 | kneeL, kneeR | one | turns the knee about the hip to ankle line, + outward |
 | ikL, ikR | x, y, z, w | the wrist goes to x, y, z with weight w (0 = the arm channels only) |
+| poleL, poleR | x, y, z, w | with arm IK on, the elbow aims at the world point x, y, z, by weight w (0 = the arm channels' plane) |
+| legFKL, legFKR | pitch, roll, twist, knee, w | an FK leg (thigh swing from the pelvis, knee bend) blended over the foot target by w (0 = IK leg) |
 | fingersL, fingersR | thumb curl, oppose, then curl, spread for index, middle, ring, pinky | a curl bends the knuckle, middle joint and tip 1 : 2 : 1.5; presets in kei.hands: relaxed (the default), open, fist, point, ok, palm-up |
 
 The commands:
@@ -49,6 +51,29 @@ The commands:
 - `kei render <shot> blocking --camera follow` rides the shot's even travel, so a travelling loop stays in frame
   and its seam can be judged (out_blocking/follow/); `--camera delivery` renders through the plan's locked camera
   (out_blocking/delivery/). Use these; do not write your own renderer.
+- `kei poses <shot> blocking` writes the record of each key pose of the plan (out_blocking/poses/poses.json: support, weight
+  side, centre of mass inside or out, lean, who holds each object) and draws out_blocking/poses/pose_sheet.png (ten keys a page; pose_sheet_2.png and on for more), four views
+  per key with those facts. Kei writes it before each review too: the critics read it.
+- `kei keys <shot> blocking set|offset|insert|copy|delete|shift ...` edits the keys in place, keeping every
+  version in out_blocking/history/ and each edit in out_blocking/edits.json. Use it instead of an editing script.
+- `kei probe <shot> blocking --frames 140-155 --joints elbow_l,hand_l,com` prints, per frame, the bends (elbow_l, elbow_r,
+  knee_l, knee_r), a joint's position, move, speed and acceleration, and the feet's contacts; also `com_margin`,
+  `ch:<channel>`, `palm_gap:<object>` and `<joint>@<joint>` (hand_l@spine_03); `--json <file>` saves it.
+  Use it instead of writing a script to read the pass. It never changes a key.
+- `kei try <shot> blocking set --frame 40 --channel spine --value 0.1,0,0` tests a `kei keys` edit on a copy and prints
+  the flags it removes and adds; `kei sweep <shot> blocking --frame 40 --channel spine --from 0 --to 0.3 --steps 7`
+  tries a range of values. Use them instead of a search script; neither changes the pass.
+- `kei check <shot> blocking --explain <flag>` prints how a flag was measured: its frames, value and limits.
+
+Objects the character handles (a crate, a ball) go in every pass's shot.json, once each; Kei places them on every
+frame, draws them in every render and checks them, so you never track or draw an object yourself:
+    "objects": [{"name": "crate", "shape": "box", "size": [0.4, 0.4, 0.4], "rest": [0, 0.2, 0.5], "mass_kg": 35,
+                 "attach": [{"f": 71, "to": "hands"}, {"f": 143, "to": "floor"}]}]
+shape is box (size x, y, z), cylinder (diameter, height) or sphere (diameter), in metres; rest is the centre on frame
+0. From an attach frame the object is held by "hand_l", "hand_r" or "hands" at the offset it had from the palm on
+that frame, or let go ("floor") where it is. "yaw_deg" sets its heading; with "turn": "hands", an object held by both
+hands turns with the line between the palms. kei check flags an object under the
+ground, one that floats when nothing holds it, and a hand that takes it from more than 5 cm away.
 
 A shot in Maya (the shot folder has maya/scene.ma) keeps the same shot.json: Kei's channels, or the rig's own
 controls with `"rig": "maya"` and keys like `"l_foot_ik_ctl.translateY": 8.0` (degrees and the scene's unit). After

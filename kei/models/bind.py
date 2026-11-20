@@ -65,16 +65,53 @@ def _segments(bones) -> list[tuple[str, tuple, tuple]]:
     return out
 
 
+FINGER_NEAR = 0.035   # m at 1.71 m: past the palm, a point this close to a finger of its hand goes to that finger
+PALM_PAST = 0.6       # a point beyond this share of the hand bone's length, toward the fingers, is past the palm
+
+
+def _along(p, a, b) -> float:
+    ab = [b[k] - a[k] for k in range(3)]
+    L2 = sum(c * c for c in ab)
+    return 0.0 if L2 < 1e-12 else sum((p[k] - a[k]) * ab[k] for k in range(3)) / L2
+
+
 def _nearest(p, segs, k: float):
-    """[(distance, bone)] nearest first, a finger bone only within its reach."""
-    out = []
+    """[(distance, bone)] nearest first, a finger bone only within its reach. A point that would ride a hand, out past
+    its palm, goes to the nearest finger of that hand within FINGER_NEAR instead: the finger joints come from a table,
+    not from the model, so a model's thumb can sit further from its bone than FINGER_REACH and moved no skin."""
+    out, fingers = [], []
     for n, a, b in segs:
         d = _seg_dist(p, a, b)
-        if n in FINGER_BONES and d > FINGER_REACH * k:
-            continue
+        if n in FINGER_BONES:
+            fingers.append((d, n))
+            if d > FINGER_REACH * k:
+                continue
         out.append((d, n))
     out.sort()
+    if out and out[0][1].startswith("hand_"):
+        hand = out[0][1]
+        seg = next((s for s in segs if s[0] == hand), None)
+        side = hand[-1]
+        mine = sorted(f for f in fingers if f[1].endswith(f"_{side}") and f[0] <= FINGER_NEAR * k)
+        if seg is not None and mine and _along(p, seg[1], seg[2]) > PALM_PAST:
+            return [mine[0]] + out
     return out
+
+
+def finger_weights(parts) -> dict:
+    """The skin each finger bone carries: rigid vertices count one each, smooth ones by their weight. Every finger
+    bone the rig has should carry some; an import reports the ones that carry none."""
+    w = {n: 0.0 for n in FINGER_BONES}
+    for p in parts:
+        if p.skin is None:
+            if p.bone in w:
+                w[p.bone] += len(p.verts)
+            continue
+        for vs in p.skin:
+            for e in vs:
+                if e[0] in w:
+                    w[e[0]] += e[1]
+    return {n: round(v, 2) for n, v in w.items()}
 
 
 def _round(pts, height):
@@ -144,8 +181,10 @@ def bind_mesh(mesh: MeshData, bones, height: float, material: str = "body") -> l
                 near = _nearest(p, segs, k)
                 votes[near[0][1]] = votes.get(near[0][1], 0) + 1
             top = max(votes, key=votes.get)
-            if votes[top] >= RIGID_SHARE * len(pts) or size < SMALL * height:
-                bone = top
+            digit = top.split("_")[0] if top in FINGER_BONES else None
+            spans = digit and len({v for v in votes if v in FINGER_BONES and v.startswith(digit + "_")}) > 1
+            if not spans and (votes[top] >= RIGID_SHARE * len(pts) or size < SMALL * height):
+                bone = top           # a finger piece across several joints of its finger bends: it is skinned
         if bone is not None:
             rigid.setdefault(bone, []).append(piece)
         else:

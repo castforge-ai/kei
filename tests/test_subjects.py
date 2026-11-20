@@ -162,12 +162,13 @@ def test_bullet_bold_and_lowercase_lines_are_read(tmp_path):
         assert shot_subjects(tmp_path) == ["locomotion"], line
 
 
-def test_too_many_rules_stop_for_a_person_and_never_ask_for_fewer_subjects(tmp_path):
+def test_too_many_rules_are_refused_before_the_run_and_never_ask_for_fewer_subjects(tmp_path):
+    import pytest
+    from kei.book import BookError
     rec = Recorder(brief_with("Subjects: all"))
-    state = run_shot(shot(tmp_path), "a walk", config(tmp_path, max_rule_chars=130), animator=FakeSeat("fake", rec))
-    assert state.status == "needs_human"
-    text = " ".join(state.history[-1]["misses"])
-    assert "max_chars" in text and "fewer" not in text
+    with pytest.raises(BookError) as e:   # checked at start against every subject, so no shot stops mid-run
+        run_shot(shot(tmp_path), "a walk", config(tmp_path, max_rule_chars=130), animator=FakeSeat("fake", rec))
+    assert "max_chars" in str(e.value) and "fewer" not in str(e.value) and rec.prompts == []
 
 
 def test_the_critic_gets_what_the_animator_got(tmp_path):

@@ -154,7 +154,7 @@ def test_a_feedback_layer_on_another_rig_is_refused_by_name(shot, capsys):
     fake.other_rig = [{"layer": "feedback", "control": "kei2:l_leg_pv_ctl", "attr": "translateX"}]
     before = load_state(root)
     assert _feedback(shot, "--text", SENTENCE) == 1
-    out = capsys.readouterr().out
+    out = "".join(capsys.readouterr())
     assert "kei2:l_leg_pv_ctl" in out and "layer feedback" in out and "rig kei" in out
     assert load_state(root) == before and not list(root.glob("feedback/*/note.json"))
     assert fake.tools() == [["read_feedback_layers"]]
@@ -186,17 +186,17 @@ def test_a_shot_not_waiting_for_a_sign_off_is_refused_before_maya_runs(shot, cap
     root, fake, _ = shot
     save_state(root, ShotState(stage="passes", status="needs_human", request="a walk"))
     assert _feedback(shot, "--text", SENTENCE) == 1
-    assert "not waiting for a sign-off" in capsys.readouterr().out and fake.jobs == []
+    assert "not waiting for a sign-off" in "".join(capsys.readouterr()) and fake.jobs == []
 
 
 def test_an_empty_reason_is_refused_and_kei_never_writes_one(shot, capsys, monkeypatch):
     root, fake, _ = shot
     assert _feedback(shot, "--text", "   ") == 1
-    assert "one sentence" in capsys.readouterr().out and fake.jobs == []
+    assert "one sentence" in "".join(capsys.readouterr()) and fake.jobs == []
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     before = load_state(root)
     assert _feedback(shot) == 1
-    assert "--text" in capsys.readouterr().out and load_state(root) == before
+    assert "--text" in "".join(capsys.readouterr()) and load_state(root) == before
     assert not list(root.glob("feedback/*/note.json"))
 
 
@@ -263,7 +263,7 @@ def test_every_shot_on_an_answer_to_another_question_is_refused(shot, capsys):
     save_state(root, ShotState(stage="passes", status="needs_answer", request="a walk",
                                questions=[{"from": "animator", "text": "Is the floor wet?"}]))
     assert main(["answer", str(root), "--text", "yes", "--every-shot", "--config", config]) == 1
-    assert "--every-shot" in capsys.readouterr().out
+    assert "--every-shot" in "".join(capsys.readouterr())
 
 
 def test_kei_run_tells_its_seats_they_run_inside_a_run(tmp_path, monkeypatch):

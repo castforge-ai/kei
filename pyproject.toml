@@ -11,7 +11,7 @@ dependencies = []
 kei = "kei.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-xdist>=3.6"]
 
 [build-system]
 requires = ["hatchling"]
@@ -23,6 +23,7 @@ packages = ["kei"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "kei.example.toml" = "kei/kei.example.toml"
+"skill" = "kei/skill"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

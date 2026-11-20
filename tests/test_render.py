@@ -329,3 +329,21 @@ def test_the_key_sheet_keeps_the_figure_in_its_smaller_panels(tmp_path):
         for x in range(w):
             for y in range(row * half + 1, row * half + 3):
                 assert px(x, y) not in (render.LEFT, render.RIGHT, render.CENTRE), (x, y)
+
+
+def test_a_second_render_keeps_the_frames_that_did_not_change(tmp_path):
+    from kei.render import read_png
+    shot = {**SHOTS["sway"], "frames": 8, "loop": False,
+            "keys": [{"f": 0, "yaw": 0.2}, {"f": 4, "yaw": -0.2}, {"f": 8, "yaw": 0.2}]}
+    src = write_shot(tmp_path, shot)
+    out = render_shot(src, tmp_path / "out", "step", size=60)
+    stamp = {p.name: p.stat().st_mtime_ns for p in out["frames"]}
+    out = render_shot(src, tmp_path / "out", "step", size=60)
+    assert {p.name: p.stat().st_mtime_ns for p in out["frames"]} == stamp       # nothing drawn again
+    # an edit inside the shot's framing (f0 keeps the widest yaw): the frames it does not touch stay
+    write_shot(tmp_path, {**shot, "keys": [{"f": 0, "yaw": 0.2}, {"f": 4, "yaw": -0.2}, {"f": 8, "yaw": 0.1}]})
+    out = render_shot(src, tmp_path / "out", "step", size=60)
+    again = {p.name for p in out["frames"] if p.stat().st_mtime_ns != stamp[p.name]}
+    assert "f0008.png" in again and "f0000.png" not in again                    # only what changed
+    cv = read_png(out["frames"][0].read_bytes())
+    assert cv is not None and cv.png() == out["frames"][0].read_bytes()          # Kei reads its own PNGs back

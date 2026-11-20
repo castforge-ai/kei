@@ -50,6 +50,8 @@ The channels (metres, radians; x is the character's right, y up, z forward):
 | toeL, toeR | one | extra bend of the toes |
 | kneeL, kneeR | one | turns the knee about the hip to ankle line, + outward |
 | ikL, ikR | x, y, z, w | the wrist goes to x, y, z with weight w (0 = the arm channels only) |
+| poleL, poleR | x, y, z, w | with arm IK on, the elbow aims at the world point x, y, z, by weight w (0 = the arm channels' plane) |
+| legFKL, legFKR | pitch, roll, twist, knee, w | an FK leg (thigh swing from the pelvis, knee bend) blended over the foot target by w (0 = IK leg) |
 | fingersL, fingersR | thumb curl, oppose, then curl, spread for index, middle, ring, pinky | a curl bends the knuckle, middle joint and tip 1 : 2 : 1.5; presets in kei.hands: relaxed (the default), open, fist, point, ok, palm-up |
 
 The commands:
@@ -61,7 +63,33 @@ The commands:
   shot so it can be judged, into out_p<n>/follow/ and out_p<n>/delivery/.
 - `kei check <shot> p<n>` measures the pass: body_check.json (contacts, foot slide, balance, joint ranges, arcs)
   and principles.json (the twelve principles).
+- `kei poses <shot> p<n>` writes the record of each key pose of the plan (out_p<n>/poses/poses.json: support, weight
+  side, centre of mass inside or out, lean, who holds each object) and draws out_p<n>/poses/pose_sheet.png (ten keys a page; pose_sheet_2.png and on for more), four views
+  per key with those facts. Kei writes it before each review too: the critics read it.
+- `kei probe <shot> p<n> --frames 140-155 --joints elbow_l,hand_l,com` prints, per frame, the bends (elbow_l, elbow_r,
+  knee_l, knee_r), a joint's position, move, speed and acceleration, and the feet's contacts; also `com_margin`,
+  `ch:<channel>`, `palm_gap:<object>` and `<joint>@<joint>` (hand_l@spine_03); `--json <file>` saves it.
+  Use it instead of writing a script to read the pass. It never changes a key.
+- `kei try <shot> p<n> set --frame 40 --channel spine --value 0.1,0,0` tests a `kei keys` edit on a copy and prints
+  the flags it removes and adds; `kei sweep <shot> p<n> --frame 40 --channel spine --from 0 --to 0.3 --steps 7`
+  tries a range of values. Use them instead of a search script; neither changes the pass.
+- `kei check <shot> p<n> --explain <flag>` prints how a flag was measured: its frames, value and limits.
+- `kei keys <shot> p<n> set|offset|insert|copy|delete|shift ...` edits the keys (`--frame`, `--frames 40-60`,
+  `--channel root`, `--value` or `--by`, `--from`; `--to p<n+1>` writes a new pass). Kei keeps every version in
+  out_p<n>/history/ and logs each edit in out_p<n>/edits.json. Use it instead of writing a script that edits keys;
+  `shift` retimes and moves the objects' attach frames with the keys.
+- `kei trails <shot> p<n-1> p<n> --parts hand_l_tip,head --frames 140-160` draws the parts' paths with a dot per
+  frame (the spacing chart), the passes overlaid in colours, into out_p<n>/trails/trails.png. Look at it instead of
+  drawing your own compare sheet.
+- `kei curves <shot> p<n> --channels spine,armL` draws a curve image per channel (out_p<n>/curves/), the graph
+  editor's view: dips between keys, overshoots and flat runs. `kei render <shot> p<n> --style stick --onion 2` draws
+  each frame with the two before and after as pale figures.
 - `kei rule <ID> [<ID> ...]` prints a rule of the book in full.
+Kei measures each pass against the one before and writes out_p<n>/refinement.json (keys, keyed share, mean and
+largest joint change, frames that changed). A pass that changes nothing is not a pass, and a long pass keyed on
+nearly every frame is sampled, not animated (WFL26): both fail the gate. Keep the keys on poses and breakdowns.
+Objects stay in each pass's shot.json as the blocking declared them ("objects", with their "attach" frames): move an
+attach frame when the timing changes, never draw or track an object yourself.
 
 A shot in Maya (the shot folder has maya/scene.ma) keeps the same shot.json: Kei's channels, or the rig's own
 controls with `"rig": "maya"` and keys like `"l_foot_ik_ctl.translateY": 8.0` (degrees and the scene's unit). After

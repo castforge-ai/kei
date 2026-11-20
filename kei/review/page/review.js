@@ -1324,16 +1324,21 @@ if (typeof document !== "undefined") {
     m.className = "message" + (kind ? " " + kind : "");
   }
 
-  async function save(confirmed, pending) {
+  async function save(code, pending) {
     document.querySelectorAll(".setting .refusal").forEach((r) => { r.textContent = ""; });
     const ch = pending || changes();
     if (!Object.keys(ch).length) return sayTop("Nothing changed.", "");
     try {
-      const out = await K.postJson("/api/settings", { changes: ch, sha256: state.sha, confirm_commands: !!confirmed });
+      const body = { changes: ch, sha256: state.sha };
+      if (typeof code === "string") body.confirm_code = code;
+      const out = await K.postJson("/api/settings", body);
       if (!out.saved && out.confirm) {
         const text = out.confirm.map((c) => c.key + "\n  now: " + (c.old || []).join(" ") + "\n  new: " + c.new.join(" ")).join("\n\n");
-        if (confirm("Kei will run this program as a seat. Save this change?\n\n" + text)) return save(true, ch);
-        return sayTop("Not saved: the command change was not confirmed.", "warn");
+        const typed = prompt((out.wrong_code ? "That code did not match; Kei printed a new one. " : "") +
+          "Kei will run this program as a seat:\n\n" + text +
+          "\n\nTo save it, type the six-digit code Kei just printed in the terminal where kei review runs.");
+        if (typed) return save(typed, ch);
+        return sayTop("Not saved: the command change needs the code from the terminal.", "warn");
       }
       await window.KeiSettings.load(K.ui.panes.settings);
       sayTop("Saved: " + out.changes.map((c) => c[0] + " " + JSON.stringify(c[1]) + " -> " + JSON.stringify(c[2])).join(", ") +

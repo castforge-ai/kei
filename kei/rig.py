@@ -25,6 +25,8 @@ CHANNELS (a pose may leave any out; a missing one takes the default stand, a sho
   toeL, toeR                    extra bend of the ball joint
   kneeL, kneeR                  turns the knee about the hip to ankle line (+ outward)
   ikL, ikR [x, y, z, w]         arm IK: the wrist goes to [x, y, z] with weight w (0 = the FK arm)
+  poleL, poleR [x, y, z, w]     the arm IK's elbow aims at a world point (w 0: the FK arm's plane, as before)
+  legFKL, legFKR [pitch, roll, twist, knee, w]  an FK leg blended over the foot target by w (0: IK, as before)
   gripR, bladeS                 kept for the kit's shot format; props are not drawn here
   fingersL, fingersR            [thumb curl, thumb oppose, then curl and spread for index, middle, ring, pinky]
 
@@ -103,7 +105,14 @@ FINGER_POSE = {
     "fingersL": [0.35, 0.35, 1.25, 0.0, 1.4, 0.0, 1.5, 0.0, 1.6, 0.0],
     "fingersR": [0.35, 0.35, 1.25, 0.0, 1.4, 0.0, 1.5, 0.0, 1.6, 0.0],
 }
-STAND = {**DEFAULT_POSE, **FINGER_POSE}
+# IK and FK switching: additions to the rig4 stand, all off by default, so a shot without them solves as before.
+#   poleL, poleR [x, y, z, w]          the arm IK's elbow aims at this world point, blended in by w (0 = the FK plane)
+#   legFKL, legFKR [pitch, roll, twist, knee, w]  an FK leg: the thigh swings from the pelvis (+ pitch forward,
+#                                      + roll out to the side, twist about the thigh), the knee bends back by knee;
+#                                      w blends the leg from the foot target (0) to this FK leg (1). The foot keeps
+#                                      its own pitch, yaw and roll from footL/footR and rollL/rollR.
+SWITCH_POSE = {"poleL": [0, 0, 0, 0], "poleR": [0, 0, 0, 0], "legFKL": [0, 0, 0, 0, 0], "legFKR": [0, 0, 0, 0, 0]}
+STAND = {**DEFAULT_POSE, **FINGER_POSE, **SWITCH_POSE}
 CHANNELS = tuple(STAND)
 
 FINGERS = ("index", "middle", "ring", "pinky")
@@ -413,6 +422,13 @@ def _skeleton(pose: dict, proportions: dict | None = None, fingers: bool = False
             fk_bend = _sub(_lerp(sh, wrist, 0.5), elbow)
             pole = _sub(fk_bend, _mul(ax, _dot(fk_bend, ax)))
             pole = bend if _len(pole) < 1e-6 else _norm(pole)
+            pv = p["pole" + side]
+            if pv[3] > 0:      # the pole channel: the elbow aims at a world point
+                toward = _sub((pv[0], pv[1], pv[2]), sh)
+                toward = _sub(toward, _mul(ax, _dot(toward, ax)))
+                if _len(toward) > 1e-6:
+                    pole = _lerp(pole, _mul(_norm(toward), -1), _clamp(pv[3], 0, 1))
+                    pole = bend if _len(pole) < 1e-6 else _norm(pole)
             ang = math.acos(_clamp((L1 * L1 + dl * dl - L2 * L2) / (2 * L1 * dl), -1, 1))
             new_elbow = _add(sh, _add(_mul(ax, L1 * math.cos(ang)), _mul(pole, -L1 * math.sin(ang))))
             y1 = _norm(_sub(new_elbow, sh))
@@ -471,9 +487,20 @@ def _skeleton(pose: dict, proportions: dict | None = None, fingers: bool = False
         if toe:
             st["T"] = _about(st["T"], st["B"], st["Gb"][0], toe)
             st["Gb"] = _rot_frame(st["Gb"], st["Gb"][0], toe)
+        L1, L2 = P["thigh"] * l_s, P["calf"] * l_s
+        fk = p["legFK" + side]
+        fk_w = _clamp(fk[4], 0, 1)
+        knee_fk = None
+        if fk_w > 0:      # the FK leg: the ankle goes where the swung thigh and the bent knee put it
+            Fth = _swing(_frame_yz(_mul(Fp[1], -1), Fp[2]), fk[0], -sg * fk[1], -sg * fk[2])
+            knee_fk = _add(hip, _mul(Fth[1], L1))
+            Fca = _swing(Fth, -fk[3], 0, 0)
+            ankle_fk = _add(knee_fk, _mul(Fca[1], L2))
+            delta = _mul(_sub(ankle_fk, st["A"]), fk_w)
+            for n in ("A", "H", "B", "T"):
+                st[n] = _add(st[n], delta)
         A, Gf, Gb = st["A"], st["Gf"], st["Gb"]
         # leg IK to the rolled ankle; the knee pole is carried with the leg
-        L1, L2 = P["thigh"] * l_s, P["calf"] * l_s
         d = _sub(A, hip)
         dl = _len(d)
         reach = L1 + L2 - 1e-4
@@ -490,6 +517,12 @@ def _skeleton(pose: dict, proportions: dict | None = None, fingers: bool = False
             pole = _rot(pole, ax, -sg * kt)
         pole = _sub(pole, _mul(ax, _dot(pole, ax)))
         pole = Fp[2] if _len(pole) < 1e-9 else _norm(pole)
+        if knee_fk is not None:     # the FK knee's side, blended in with the FK weight
+            kd = _sub(knee_fk, hip)
+            kd = _sub(kd, _mul(ax, _dot(kd, ax)))
+            if _len(kd) > 1e-6:
+                pole = _lerp(pole, _norm(kd), fk_w)
+                pole = Fp[2] if _len(pole) < 1e-9 else _norm(pole)
         ang = math.acos(_clamp((L1 * L1 + dl * dl - L2 * L2) / (2 * L1 * dl), -1, 1))
         knee = _add(hip, _add(_mul(ax, L1 * math.cos(ang)), _mul(pole, L1 * math.sin(ang))))
         ankle = _add(hip, _mul(ax, dl))

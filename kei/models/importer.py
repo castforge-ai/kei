@@ -192,6 +192,13 @@ def _import(model: Model, path, name: str, height, maps, unrigged: bool) -> tupl
             f"({rest['neck'][0]} rad), so a shot may play the head too far {'forward' if rest['neck'][0] > 0 else 'back'}"
             "; look at the neutral stance panel of fit.png before you approve the fit")
     report["parts"] = {"rigid": sum(1 for p in parts if p.skin is None), "smooth": sum(1 for p in parts if p.skin)}
+    from kei.models.bind import finger_weights
+    report["fingers"] = finger_weights(parts)          # the skin each finger bone moves
+    bare = sorted(n for n, w in report["fingers"].items() if w == 0)
+    if bare:
+        report["warnings"].append(
+            f"{len(bare)} finger bone(s) move no skin: {', '.join(bare)}. Those fingers stay rigid in every shot; "
+            "look at the hands on fit.png before you approve the fit")
     source = {"file": str(path), "skeleton": report["skeleton"], "height": round(height, 4)}
     sources = []                     # one texture per base colour image, in the order the parts name them
     for p in parts:

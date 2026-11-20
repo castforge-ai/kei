@@ -1,0 +1,39 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/castforge-ai/kei/blob/main/docs/schemas/bundle.schema.json",
+ "title": "Kei lesson bundle (bundle.json)",
+ "description": "One shared lesson: lesson.md, cases/fails/shot.json, cases/passes/shot.json, numbers.json and this file, with the sha256 of each other file.",
+ "type": "object",
+ "required": [
+  "format",
+  "files"
+ ],
+ "properties": {
+  "format": {
+   "const": 1
+  },
+  "kei_version": {
+   "type": "string"
+  },
+  "stage": {
+   "type": "string"
+  },
+  "lesson": {
+   "type": "string"
+  },
+  "files": {
+   "type": "object",
+   "required": [
+    "lesson.md",
+    "cases/fails/shot.json",
+    "cases/passes/shot.json",
+    "numbers.json"
+   ],
+   "patternProperties": {
+    ".": {
+     "type": "string"
+    }
+   }
+  }
+ }
+}

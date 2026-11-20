@@ -212,3 +212,27 @@ def test_an_in_place_loop_is_measured_as_it_travels_so_its_treadmill_feet_are_pl
     shot["in_place"] = {"speed_mps": 0.36}                 # 0.15 m in 10 frames at 24 fps
     report = json.loads(check_pass(pass_dir(tmp_path, shot), "p1", character="kei", mode="linear").read_text())
     assert flags(report, "foot_slide") == [] and report["in_place_speed_mps"] == 0.36
+
+
+def test_contact_timing_flags_a_foot_that_lifts_with_the_weight_still_on_it():
+    from kei.body_check import contact_timing
+
+    def frame(f, l_y, r_y, com_x):
+        j = {"com": (com_x, 0.9, 0.0)}
+        for s, x, y in (("l", -0.1, l_y), ("r", 0.1, r_y)):
+            for p in ("heel_{s}", "ball_{s}", "ball_{s}_tip"):
+                j[p.format(s=s)] = (x, y, 0.0)
+        return {"f": f, "joints": j}
+    late = [frame(0, 0, 0, -0.08), frame(1, 0.1, 0, -0.08)]       # the left foot lifts with 90% on it
+    early = [frame(0, 0, 0, 0.08), frame(1, 0.1, 0, 0.08)]        # the weight moved to the right foot first
+    assert [(s, f) for s, f, _ in contact_timing(late, 0.02)["lifts"]] == [("l", 1)]
+    assert contact_timing(early, 0.02)["lifts"] == []
+    slam = [frame(0, 0.1, 0, 0.08), frame(1, 0, 0, -0.09)]        # the left foot lands and takes 95% at once
+    assert [(s, f) for s, f, _ in contact_timing(slam, 0.02)["lands"]] == [("l", 1)]
+
+
+def test_the_approved_walk_has_no_contact_timing_flag(tmp_path):
+    report = json.loads(check_pass(pass_dir(tmp_path, json.loads(
+        (ROOT / "tests" / "fixtures" / "walks" / "kei_p10_approved.json").read_text(encoding="utf-8"))), "p1",
+        character="kei").read_text())
+    assert flags(report, "contact_timing") == []

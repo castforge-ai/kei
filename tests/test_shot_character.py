@@ -166,7 +166,7 @@ def test_the_shot_json_field_wins_and_an_unknown_one_exits_1(tmp_path, capsys):
     root2 = shot_folder(tmp_path / "b", {**STAND, "character": "bob"})
     capsys.readouterr()
     assert main(["render", str(root2), "p1", "--config", cfg]) == 1
-    assert "bob" in capsys.readouterr().out
+    assert "bob" in "".join(capsys.readouterr())
 
 
 def test_bake_uses_the_character_proportions(tmp_path):

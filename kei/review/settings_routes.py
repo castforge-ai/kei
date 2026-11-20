@@ -1,10 +1,14 @@
 """The Settings tab: the same rows as kei settings and the same apply_change(), behind the review page's locks
 (127.0.0.1, the token, the cookie, Host and Origin). A change to an agent command is shown in full, old and new,
-and saved only after the user confirms it."""
+and saved only after the user types the one-time code Kei prints in the terminal: the code never reaches the page,
+so a page or script that can post to the server cannot confirm a new agent command on its own."""
 from __future__ import annotations
 
+import json
+import secrets
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Callable
 
@@ -35,8 +39,11 @@ class SettingsRoutes:
     exist yet (kei.example.toml)."""
 
     def __init__(self, target: Path, shown: Path | None = None, which=None,
-                 runner: Callable[[list[str], int], tuple[int, str]] = _run_version):
+                 runner: Callable[[list[str], int], tuple[int, str]] = _run_version,
+                 announce: Callable[[str], None] | None = None):
         self.target = Path(target)
+        self.announce = announce or (lambda text: print(text, file=sys.stderr, flush=True))
+        self.pending: tuple[str, str] | None = None   # (code, the command changes it confirms)
         self.shown = Path(shown) if shown else st.EXAMPLE
         self.which = which
         self.runner = runner
@@ -65,9 +72,21 @@ class SettingsRoutes:
             if mode == "auto" and touched:      # never from a dialog (design Amendment 2)
                 return 409, {"error": AUTO_OFF_PAGE, "key": touched[0]}
             commands = [k for k in changes if st.setting(k).kind == "command"]
-            if commands and body.get("confirm_commands") is not True:
-                return 200, {"saved": False, "confirm": [
-                    {"key": k, "old": rows.get(k, {}).get("value"), "new": changes[k]} for k in commands]}
+            if commands:
+                asked = json.dumps({k: changes[k] for k in commands}, sort_keys=True)
+                code = body.get("confirm_code")
+                held, self.pending = self.pending, None      # a code works once, for the change it was printed for
+                if not (held and isinstance(code, str) and held[1] == asked
+                        and secrets.compare_digest(code.strip(), held[0])):
+                    new = f"{secrets.randbelow(10 ** 6):06d}"
+                    self.pending = (new, asked)
+                    lines = ["kei review: the page asks to change an agent command:"]
+                    lines += [f"  {k}: {' '.join(map(str, changes[k]))}" for k in commands]
+                    lines += [f"To allow it, type {new} on the page. Ignore this if you did not ask."]
+                    self.announce("\n".join(lines))
+                    return 200, {"saved": False, "code_in_terminal": True, "wrong_code": code is not None,
+                                 "confirm": [{"key": k, "old": rows.get(k, {}).get("value"), "new": changes[k]}
+                                             for k in commands]}
             notes: list[str] = []
             done = st.apply_change(self.target, changes, expect_sha256=body.get("sha256"), which=self.which,
                                    notes=notes)

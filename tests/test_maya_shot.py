@@ -124,7 +124,7 @@ def test_kei_bake_refuses_a_maya_shot_so_maya_s_joints_are_kept(tmp_path, capsys
     (tmp_path / "maya").mkdir()
     (tmp_path / "maya" / "scene.ma").write_text("//Maya ASCII")
     assert main(["bake", str(tmp_path), "p1"]) == 1
-    assert "kei maya key" in capsys.readouterr().out
+    assert "kei maya key" in "".join(capsys.readouterr())
 
 
 def test_kei_render_with_another_camera_on_a_maya_shot_says_why(tmp_path, capsys):
@@ -132,4 +132,4 @@ def test_kei_render_with_another_camera_on_a_maya_shot_says_why(tmp_path, capsys
     (tmp_path / "maya").mkdir()
     (tmp_path / "maya" / "scene.ma").write_text("//Maya ASCII")
     assert main(["render", str(tmp_path), "p1", "--camera", "follow"]) == 1
-    assert "Maya's cameras" in capsys.readouterr().out
+    assert "Maya's cameras" in "".join(capsys.readouterr())

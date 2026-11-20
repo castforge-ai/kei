@@ -54,7 +54,7 @@ def test_kei_import_writes_the_character_and_its_fit_sheet(chars, tmp_path, caps
 
 def test_an_unrigged_model_with_no_height_asks_for_one(chars, tmp_path, capsys):
     assert main(["import", str(unrigged_fbx(tmp_path / "scan.fbx")), "--name", "kei_scan"]) == EXIT_ERROR
-    assert "--height" in capsys.readouterr().out
+    assert "--height" in "".join(capsys.readouterr())
 
 
 def test_a_rigged_model_imports_on_its_own_skeleton_at_its_own_height(chars, tmp_path):

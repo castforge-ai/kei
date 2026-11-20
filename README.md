@@ -10,6 +10,23 @@ separate reviewer checks every pass, and a person signs off every shot.
 
 Kei Animator is the tool; Kei is the agent inside it, and `kei` is its command. Kei reads as "key", as in key poses. The method it follows is open, and it is called the Kei method.
 
+Short guides live in [docs/](docs/README.md): a quickstart, the stages, the file formats with their JSON Schemas,
+engines and troubleshooting by status. This README is the full reference.
+
+## Quickstart
+
+    pipx install kei-animator        # or: uv tool install kei-animator
+    kei doctor                       # checks Python, the rule book, your agent CLIs, ffmpeg
+    kei demo                         # Kei's tools on an approved walk, offline, in about a minute
+    kei skill install                # the Kei skill for Claude Code (--agent codex for Codex)
+    kei init                         # writes kei.toml in the folder where your shots will live
+    kei run my_shot --request "a tired character climbs three steps and sits down"
+
+`kei demo` needs no agent and no subscription: it renders a finished walk, runs the body checks, the pose records,
+the trails and the four-view video, and prints where each file is. A real shot runs twelve stages with your agent
+and its reviewers, and takes from 30 to 90 minutes for a short action to several hours for a long one; the heavy
+lift benchmark took 8 to 13 hours unattended. "First ten minutes" below goes through each step.
+
 ## What a shot looks like
 
 You ask for a shot in plain words: "a tired character climbs three steps and sits down". Kei runs it through the same
@@ -17,16 +34,18 @@ twelve stages a trained animator would, and every stage leaves a file you can op
 
 | Stage | What it leaves |
 |---|---|
-| Brief | the request restated, the idea sentence, the character, the topics this shot needs |
-| Rig and weight evaluation | what the rig can do, the character's mass and weight class |
-| Understanding score | how well the action is understood before any key |
-| Reference and study | vetted reference, measured, and where the shot departs from it |
-| Plan | the key poses with their frames, drawn as a plan sheet (side view, plus front and top views when planned), and the planned arcs |
-| Blocking | the key poses, stepped, in four views and a playback |
-| Breakdowns, spline and polish | each refined pass in its own folder |
-| Checks | contacts, foot slide, balance, joint ranges, arcs and basic posing (an A-frame stance, locked knees, a kinked neck, a dead straight arm, a body that does not move), measured by `kei check` |
-| Self-review | what was seen, frame by frame, before anyone else looks |
-| Delivery | the shot, and the lessons it taught |
+| 1. Brief | the request restated, the idea sentence, the character, the topics this shot needs |
+| 2. Rig evaluation | what the rig can do and where its limits are |
+| 3. Weight evaluation | the character's mass and weight class |
+| 4. Understanding score | how well the action is understood before any key |
+| 5. Reference search | vetted reference for the action |
+| 6. Study | the reference measured, and where the shot departs from it |
+| 7. Plan | the key poses with their frames, drawn as a plan sheet (side view, plus front and top views when planned), and the planned arcs |
+| 8. Blocking | the key poses, stepped, in four views and a playback, with a record of each key pose (support, weight side, centre of mass, lean, what the hands hold) and a pose sheet the critics read |
+| 9. Breakdowns, spline and polish | each refined pass in its own folder |
+| 10. All the checks | contacts, foot slide, balance, joint ranges, arcs, the twelve principles, basic posing (an A-frame stance, locked knees, a kinked neck, a dead straight arm, a body that does not move) and the objects the character handles, measured by `kei check`; `kei check <shot> <pass> --explain <flag>` prints one flag's measure, frames, value and limits |
+| 11. Self-review | what was seen, frame by frame, before anyone else looks |
+| 12. Delivery | the shot, and the lessons it taught |
 
 No stage is ever skipped, on any shot, however small.
 
@@ -50,12 +69,23 @@ No stage is ever skipped, on any shot, however small.
   gives the file and the line, never the name. Kei ships no list, and git ignores `kei.banned.txt`. These are writing
   rules, not a legal clearance: there is no quotation length that guarantees permission, and rewording does not by
   itself make a source's examples or arrangement free to use. Use only material you have the right to use.
-- **Real footage from your own library.** Kei's agents cannot browse the web or download clips. Give them a
+- **Web access, asked once.** `kei init` asks one question: may Kei's agents search the web for references? The
+  answer is saved as `[seats] web` in kei.toml (a kei.toml from before the question is asked at its next
+  `kei run`; with nobody at a terminal, the answer is on). On, a Claude Code seat gets WebSearch and WebFetch, and a
+  Codex seat gets `--search`; the agents read papers and link clips at a timestamp, never downloading them. Off, both
+  are refused. `kei init --web on|off` answers in advance, and `kei settings set seats.web off` changes it later.
+- **Real footage from your own library.** Kei's agents never download clips. Give them a
   folder of footage you have the right to use, such as public-domain photo sequences or clips under an open licence,
   with an `INDEX.md` and a `SOURCE.md` per clip (creator, year, licence, frame rate, view). Put it in `kei-refs`
   next to kei.toml, or set `[refs] library`. Kei gives its agents read access to it, and the reference stage takes
   its short look there: frames pulled into the shot's own `.kei/look/` folder, measured, never traced, and no clip
   copied into the shot. Kei ships no footage.
+- **Motion capture you may use, as measured reference.** `kei ref import <shot> <file.bvh> --licence "CC0" --source
+  <url>` reads a BVH capture (CMU, Mixamo, Rokoko and most others name their joints in a way Kei matches), turns it
+  into Kei's joints, and writes `refs/mocap/<name>/`: the joints per frame, what `kei check` measures on it, the
+  pelvis bob, the travel and speed, each foot's contact frames, a sheet of eight frames, the source and licence as you
+  stated them, and a row for `REFS.md`. The plan measures against it; the keys are never traced from it. Kei refuses a
+  file with no licence. C3D marker data is not read: convert it to BVH in your capture tool first.
 - **A person signs off.** A finished shot waits for your approval. A note you give sends it back, and becomes a lesson.
   A note after you approved withdraws the approval and opens the shot again.
 
@@ -69,7 +99,10 @@ stands. A shot stops for a person in these cases:
 
 - **The gate or the critics refused the stage too many times.** Read the notes `kei status` prints, fix what needs
   fixing, then `kei retry <shot>`. The next try reads the critics' last notes again. Add your own with
-  `kei retry <shot> --note "keep the contacts, lift the passings"`.
+  `kei retry <shot> --note "keep the contacts, lift the passings"`: that note is an instruction for the animator,
+  and the critics do not judge the work against it. To run without stopping here, set `limits.on_send_back_limit`:
+  `retry` runs the stage again with `limits.retry_note`, up to `limits.auto_retries` times, and `advance` moves the
+  critics' open notes to your sign-off checklist and goes on.
 - **A stage or a critic asks you something.** Any stage, and any critic, can ask a question only a person can settle,
   such as an unclear brief or a viewing at real rate (no agent can watch a video at its frame rate). The shot stops
   with `needs_answer`, and `kei status` prints the question and the file to look at, for example the ten-loop video
@@ -81,9 +114,32 @@ stands. A shot stops for a person in these cases:
   is listed once. When the shot reaches `needs_approval`, `kei status` lists those checks before you approve, and
   `kei approve` run inside the shot folder signs it off.
 - **A seat hit a usage or rate limit, or could not start.** The stage pauses (status `paused_usage` or
-  `paused_machine`), and the pause is not counted as a try. `kei status` says why in plain words. When the limit
+  `paused_machine`), and the pause is not counted as a try. A critic that crashes, times out or gives no verdict is
+  asked once more, then pauses the stage the same way: it never costs a send-back. `kei status` says why in plain words. When the limit
   resets or the machine is ready, `kei run <shot>` goes on where it stopped; the request is already recorded. A pause
   during the review resumes at the review, without running the animator again.
+
+For a run with nobody at the keyboard, `kei run <shot> --answers answers.toml` answers plain questions from a file
+(`default = "..."` and `[[answer]]` tables with a `match` pattern and a `text`) and goes on, recording each answer as
+read from the file. A choice only a person makes (where to animate in Maya or Unreal, an imported character's fit)
+still stops.
+`kei run <shot> --wait-on-limit` waits out a usage limit instead of stopping: Kei reads the reset time from the
+seat's message (else waits 30 minutes), records it in the history, and runs on, for at most `--max-wait-hours` (12).
+The critics of a stage answer at the same time, and when one pauses, the verdicts the others gave are kept for the
+resume. A critic with a `fallback_cmd` in kei.toml hands its review to that stand-in seat when it hits a usage limit,
+so the stage goes on.
+
+For scripts, `kei status <shot> --json` prints the shot as JSON, and the exit code says where a run stopped. Errors
+go to stderr, starting with `kei: `; everything else goes to stdout.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | done, or the command did what it was asked |
+| 1 | an error (the message is on stderr) |
+| 2 | the shot needs a person: `kei status` says why |
+| 3 | the shot needs an answer: `kei answer` |
+| 4 | the shot waits for your approval: `kei approve`, or `kei note` |
+| 5 | paused (a usage limit, a seat fault): run `kei run` again to go on |
 
 ## A delivered shot's folder
 
@@ -134,6 +190,45 @@ no change and no page open, or a quarter of an hour after the shot is signed off
 Turn it off in kei.toml with `[live] page = "off"`, or keep it and stop the browser opening with `open = "off"`
 (`kei settings set live.page off` does the same).
 
+## Objects, pose records and the probe
+
+Kei does the repeatable work around the poses, so the agent does not write it again on every shot:
+
+- **Objects.** A pass's shot.json lists the objects the character handles (`"objects"`: a box, cylinder or sphere
+  with its size, rest place and `attach` frames to `hand_l`, `hand_r`, `hands` or `floor`). Kei places each object on
+  every frame from the hands, draws it in every render (the stick figure as an outline, the four-view `--post` video
+  with a contact shadow), and `kei check` flags one under the ground, one floating with nothing holding it, and a
+  hand that takes it from a distance. `"yaw_deg"` sets its heading, and `"turn": "hands"` turns it with the line
+  between the palms while both hands hold it.
+- **Pose records.** `kei poses <shot> <pass>` writes `out_<pass>/poses/poses.json`: for each key pose of the plan,
+  the agent's function, kind, intent and judging view, with the planted feet, weight side, centre of mass against
+  the support, lean and held objects measured by Kei. `pose_sheet.png` draws each key in four views with those
+  facts. Kei writes both before every blocking and passes review.
+- **Probe.** `kei probe <shot> <pass> --frames 140-155 --joints elbow_l,hand_l,com` prints the bends, positions,
+  moves, speed (m/s), acceleration (g) and foot contacts frame by frame (`--json` saves them). It also reads
+  `com_margin` (how far the centre of mass is outside the support), `ch:<channel>` (a rig channel's value),
+  `palm_gap:<object>` (each palm's gap to an object) and `<joint>@<joint>` (one joint's offset from another). It
+  reads only.
+- **Trails, curves and onion skins.** `kei trails <shot> p5 p6 --parts hand_l_tip` draws part paths with a dot per
+  frame, passes overlaid; `kei curves <shot> p6 --channels spine,armL` draws a curve image per channel; `kei render
+  <shot> p6 --style stick --onion 2` draws the frames around each frame as pale figures.
+- **Pinned render settings.** A `render.json` in the shot folder pins how each stage renders, so every render of it
+  looks the same: `{"all": {"size": 270}, "blocking": {"style": "stick"}, "p6": {"onion": 2}}` (settings: style,
+  camera, size, emission, overlay, onion, mode). The pass's own entry wins over its stage's, the stage's over `all`,
+  and a flag on the command line over all of them. Pose sheets hold ten keys a page (`pose_sheet.png`,
+  `pose_sheet_2.png`...).
+- **IK and FK switching, matched.** An arm is FK (armL, elbowL) with IK blended in by `ikL` [x, y, z, weight];
+  `poleL` [x, y, z, weight] aims the IK elbow at a world point. A leg is IK on its foot target, and `legFKL` [pitch,
+  roll, twist, knee, weight] blends in an FK leg swung from the pelvis (the foot keeps its own pitch, yaw and roll).
+  All are off by default, so a shot without them plays as before. `kei keys <shot> <pass> match --frame 40 --channel
+  armL --value ik` switches with no snap: the frame before holds the old mode, and frame 40 keys the new mode fitted
+  to the same pose (within 2 mm; it refuses when no pose of the new mode gets there). It works both ways, for armL,
+  armR, legL and legR. In Maya, the IK and the FK controls are both keyed on the solved pose, and each limb's ikFk
+  follows these weights. Unreal Control Rig switches are not keyed yet.
+- **Try and sweep.** `kei try <shot> <pass> set --frame 40 --channel spine --value 0.1,0,0` makes a `kei keys` edit on
+  a copy and prints the flags it removes and adds; `kei sweep <shot> <pass> --frame 40 --channel spine --from 0 --to
+  0.3 --steps 7` does it for a range of values and marks the one with the fewest flags. The shot is never changed.
+
 ## Seeing a shot
 
 `kei render <shot> <pass>` draws a pass on the shot's character in five views, with a still per key, a key sheet
@@ -144,6 +239,13 @@ help with travelling shots such as walks:
   it. The marks are spaced to repeat exactly over one cycle, so the loop's seam shows no jump.
 - `--camera delivery` renders through the locked delivery camera the plan names in `plan/plan.json` ("camera": yaw,
   pitch, target, lens and distance or a frame height, aspect, follow), in one panel at the camera's aspect.
+  The camera can move: `"keys": [{"f": 0}, {"f": 40, "lens_mm": 70}, {"f": 72, "yaw_deg": 60, "cut": true}]` pushes
+  in from frame 0 to 40 and cuts to a new angle at 72. Each key changes some settings (yaw, pitch, target, lens,
+  distance, frame height) from its frame; between keys the camera eases, and a key with `"cut": true` starts a new
+  setup on its frame. The render writes `framing.json` beside the frames and prints its staging notes, per setup:
+  frames where part of the character leaves the picture, a setup under 8 frames, a cut that crosses the line (from
+  the character's right side to its left), and a setup where the character fills under a quarter of the picture.
+  These are notes for the animator and the critics, not a gate.
 
 The character is drawn smooth, with blended edges, at 540 pixels a panel unless you pass `--size`. To share a shot,
 `--post` writes a clean video: the side, three quarter, front and back views two by two, 1080 by 1080, with no
@@ -365,8 +467,12 @@ my-shots/
    Both put `kei` on your PATH. A plain `pip install kei-animator` works too, but `pip install --user` can leave the
    command off your PATH: then run Kei as `python -m kei` (for example `python -m kei init`) or add pip's user scripts
    folder to your PATH. To work on Kei itself, clone this repository and run `pip install -e .` in it.
-2. Install the Kei skill for your agent. The skill is the folder `skill/kei` in this repository; copy it (or link it)
-   into your agent's skills folder:
+   Then run `kei doctor`: it checks Python, the config, the rule book, each seat's program and version, ffmpeg, gh
+   and Maya when you use it, and says how to fix each problem.
+2. Install the Kei skill for your agent: `kei skill install` (Claude Code, every project), `kei skill install --agent
+   codex`, or add `--project` to install it inside the current folder. The skill ships in the package, so this works
+   after a pipx or uv install too. By hand, copy the folder `skill/kei` of this repository into the agent's skills
+   folder:
    - Claude Code: `~/.claude/skills/kei` for every project, or `.claude/skills/kei` inside one project folder.
    - Codex: `~/.agents/skills/kei` for every project (older Codex versions read `~/.codex/skills/kei`), or
      `.agents/skills/kei` inside one project folder.
@@ -416,11 +522,56 @@ The agent never signs off, drops or confirms a fix for you. The same commands wo
 lessons file back as they were. `kei fixed` refuses until a new pass exists since the notes ("show the new pass
 first"). `kei drop` rejects the shot with the reason "dropped by the author".
 
+### Shots timed to sound
+
+`kei sound <shot> <file>` puts a sound or dialogue track in the shot. A `.wav` is read as it is; any other format
+needs ffmpeg. Kei reads it frame by frame at the shot's frame rate and writes, in `<shot>/sound/`:
+
+- `sound.json`: the level of each frame, the beats (frames where the sound hits) and the phrases (stretches of sound
+  between silences);
+- `waveform.png`: the level per frame, the beats in red and the phrases in green, shown on the live page and in the
+  report with the other sheets;
+- `XSHEET.md`: the sound column of the exposure sheet, one row per frame, that the plan stage times against.
+
+`--offset <n>` starts the track at its frame n, and `--words <file>` names each phrase (one line per phrase, in order),
+so a line of dialogue reads on the sheet. `kei keys <shot> <pass> snap --by 2` moves each key to its nearest beat at
+most 2 frames away, in order, never onto another key, keeping every version as any key edit does. Kei plays nothing
+and sends the sound nowhere.
+
+### Variations of an approved shot
+
+A game needs the same action in several moods and weights. `kei vary <shot> --note "heavier crate, tired"` starts a
+new shot beside the approved one (`<shot>-heavier-crate-tired`, or `--to <folder>`) and runs only the stages the
+change needs. Your note is the author's note of the first stage it runs:
+
+- `--from-stage plan` (the default): the brief, the evaluations, the references and the study are kept; the plan is
+  kept as a draft the animator revises, and the critics judge it again. For a change that moves the timing.
+- `--from-stage blocking`: the plan is kept and stays approved; the poses are keyed again.
+- `--from-stage passes`: blocking is kept too; the passes refine it again.
+
+Only a signed-off shot varies. The source is never changed, and nothing of its sign-off, its later passes, its report
+or its exports is copied. Then `kei run <new shot>`.
+
+### A reviewer on another computer
+
+`kei pack <shot>` writes `<shot>/<shot>_pack.html`: the live page as one file, with every sheet, drawing and video it
+shows inside it. It needs no server, no network and no shot folder, so you can send it to a supervisor or a client.
+Rendered frame folders stay out. `--no-video` leaves the videos out for a much smaller file, and `--max-mb` (default
+200) caps the size; a file that does not fit is listed.
+
+The page ends with a notes panel. The reviewer writes each note in their own words, with the frames if they know
+them, and saves `<shot>_notes.json`. Bring it in with `kei note <shot> --from-file <shot>_notes.json`: each note
+goes in word for word with the reviewer's name and the frames in front (`f13-18: ...`), for this shot only, and can be
+removed with `kei note --undo` like a chat note. Kei refuses a notes file for another shot, from a pack this shot did
+not make, or one already brought in. Whether a reviewer's note becomes a rule for every shot is yours to decide later.
+
 ## Where the animation goes
 
 Kei's output is animation, not an app. It animates on its own rig and exports a standard file, glTF or FBX, with the
-Unreal mannequin bone names, that game engines and 3D apps can import: `kei export --character kei --format gltf|fbx`
-(add `--shot` and `--pass` for the animation; without `--format` the `--out` file name decides).
+Unreal mannequin bone names, that game engines and 3D apps can import: `kei export <shot>` writes the shot's approved
+pass (else its newest) on the shot's character to `<shot>/<shot>_<pass>.glb`, at the top of the shot folder;
+`--format fbx` or `--format both` for FBX, `--pass` and `--character` to choose, `--out` or `--out-dir` to write
+elsewhere. `kei export --character kei` writes the rest pose.
 
 Kei can also work live inside an app, keying your character's own rig there: Unreal Engine 5 and Autodesk Maya.
 Other apps can be added the same way.
@@ -441,6 +592,17 @@ Kei animates your own character in your open Unreal Editor: it keys the characte
 for every check. It is designed to keep its work separate from your existing assets, but it cannot guarantee that every
 operation or agent action leaves them as they were. Tested with Claireon 2.2.0 on Unreal 5.8.3 and the Third Person
 sample project (its mannequin and the mannequin's Control Rig). Other versions are not tested.
+
+**Compatibility.** `kei unreal check` reads your project (the engine version, Claireon and its version, the Python
+plugin, the port and the ignore line), asks the open editor for its server and protocol, and compares both to this
+table. A combination that is not in the table is a warning, not a failure: it may work, and nobody has checked it.
+
+| Unreal | Claireon | Protocol | Platform | Tested |
+|---|---|---|---|---|
+| 5.8 | 2.2.0 | 2025-03-26 | Windows 11 | live: rig probe, keying, read-back, checks, bake (Third Person mannequin) |
+
+The editor's memory after each pass (`unreal/memory.json`) is the private memory and the working set on Windows. On
+macOS and Linux Kei reads the resident set with `lsof` and `ps`, and the private figure is empty.
 
 **What works, and what is still to prove.**
 
@@ -612,8 +774,20 @@ request opens only when you press GitHub's own button. With `[share] mode = "alw
 does the same at Accept without asking. Kei holds no GitHub key. Your GitHub account is the only name on the
 contribution: Kei reads your login and id with `gh api user` and makes that one commit under that identity (your GitHub no-reply
 address). That is a commit identity, not a Developer Certificate of Origin sign-off: add your own `Signed-off-by` line
-to the pull request when you agree to the certificate in CONTRIBUTING.md. It never uses or changes your git name and e-mail, and it does not share when gh
+to the pull request when you agree to the certificate in CONTRIBUTING.md, or set `kei settings set share.sign_off on`
+once and Kei adds that line, for your GitHub account, to every lesson you share. It never uses or changes your git name and e-mail, and it does not share when gh
 cannot tell it your account. Without `gh`, the page shows the folder and the steps to send it by hand.
+
+**Without GitHub.** A studio that does not use GitHub can move a lesson as one file. The page prepares the bundle in
+`lessons/incoming/<name>/` beside your lessons file; `kei share export lessons/incoming/<name>` checks it and writes
+`<name>.zip`. Send the zip by any means. A maintainer runs `kei share import <name>.zip`, which unpacks only the five
+files of one lesson folder into `lessons/incoming/`, refuses anything else, and checks it; then `kei review --lesson`
+as usual.
+
+**Checks before a maintainer looks.** `kei share check <folders>` runs the bundle checks of the review page on every
+bundle it finds and exits 1 when one fails. The project runs it, and a Signed-off-by check, on every pull request that
+adds a lesson (`.github/workflows/lessons.yml`). `kei share list --write` writes `lessons/ACCEPTED.md`, the public list
+of the lessons the maintainers accepted, from their verdicts.
 
 ### Automatic sharing, for a studio
 

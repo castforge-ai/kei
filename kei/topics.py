@@ -84,6 +84,32 @@ CORE: dict[str, tuple[str, ...]] = {
 }
 
 
+def critic_block(stage_id: str, topics: list[Topic], lessons: list[Rule], subjects: list[str] | None,
+                 book: Path | None = None) -> str:
+    """The rules a critic gets: every rule the stage's animator gets, as a checklist by ID and title, grouped by topic
+    with the file that holds its full text, and the author's local lessons in full. The animator's full rule text
+    (about 150k characters at blocking and passes) costs every critic call and invites small notes; the critic reads
+    the full text of the rules it judges by from the files."""
+    every = subjects is None or ALL in subjects
+    lines = ["The rules of this stage, by ID and title. Judge the work against them. The full text of each rule is in "
+             "its topic's file below: read the ones you judge by, before you write a note on them."]
+    for t in topics:
+        if not (t.kind == "principle" or every or t.name in subjects):
+            continue
+        rules = rules_for(t.rules, stage_id)
+        if not rules:
+            continue
+        where = ""
+        if book is not None:
+            p = Path(book)
+            where = f" ({(p / (t.name + '.md')).as_posix() if p.is_dir() else p.as_posix()})"
+        lines += ["", f"{t.title}{where}:"] + [f"- {r.id}. {r.title}" for r in rules]
+    mine = rules_for(lessons, stage_id)
+    if mine:
+        lines += ["", rules_block(mine).replace("Rules for this stage:", "The author's own lessons, in full:")]
+    return "\n".join(lines)
+
+
 def stage_block(stage_id: str, topics: list[Topic], lessons: list[Rule], subjects: list[str] | None) -> str:
     """The rules one stage gets. subjects None or containing all means every subject topic. A stage in CORE gets its
     core topics, the subjects the shot named and the local lessons in full, and the rest of its rules as an index."""

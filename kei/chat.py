@@ -83,6 +83,19 @@ def _last_pass(shot: Path) -> dict | None:
     return {"name": p.parent.name[len("out_"):], "date": when}
 
 
+def shot_summary(shot: Path) -> dict:
+    """One shot as kei status <shot> --json gives it: name, path, status, stage, attempts, send-backs, last pass,
+    open notes and the seat runs added up (runs, seconds, tokens)."""
+    from kei.seats import run_totals
+    from kei.unchecked import unchecked
+    shot = Path(shot)
+    state = load_state(shot)
+    notes = [{k: n[k] for k in ("n", "lesson", "words", "scope", "from", "new_pass")} for n in open_notes(shot, state)]
+    return {"shot": shot.resolve().name, "path": str(shot.resolve()), "status": state.status, "stage": state.stage,
+            "attempts": state.attempts, "send_backs": state.send_backs, "last_pass": _last_pass(shot), "notes": notes,
+            "seat_runs": run_totals(shot), "unchecked": len(unchecked(shot))}
+
+
 def open_shots(folder: Path, show_all: bool = False) -> dict:
     """Every shot under the folder that is not done or rejected: name, path, status, stage, last pass (name and the
     date of its file) and open notes. A parked shot and a shot asked about today are left out unless show_all; they
