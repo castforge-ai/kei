@@ -159,6 +159,14 @@ def earlier_block(earlier: list[list[str]]) -> list[str]:
     return lines
 
 
+def passes_under_review(shot_dir: Path, stage_id: str, changed_plan: list[str] = ()) -> list[str]:
+    """The passes a review judges: the one the stage made (blocking, or the newest p<N>) and any new pass after it."""
+    from kei.pose_record import latest_pass
+    made = latest_pass(shot_dir, stage_id)
+    newer = [c[len("pass:"):] for c in changed_plan if c.startswith("pass:")]
+    return list(dict.fromkeys(([made] if made else []) + newer))
+
+
 def critic_prompt(stage: Stage, shot_dir: Path, request: str, changed_plan: list[str], rules: str = "",
                   answers: list[dict] = (), earlier: list[list[str]] = (), author_notes: list[str] = (),
                   fixed: list[str] = ()) -> str:
@@ -188,10 +196,14 @@ def critic_prompt(stage: Stage, shot_dir: Path, request: str, changed_plan: list
     marks = critic_lines(shot_dir)
     if marks:
         lines += [*marks, ""]
-    lines += ["In the shot folder:"]
-    lines += [f"- {a}" for a in _artifacts(shot_dir)] or ["- (nothing yet)"]
     plan_files = [c for c in changed_plan if not c.startswith("pass:")]
     new_passes = [c[len("pass:"):] for c in changed_plan if c.startswith("pass:")]
+    from kei.apps.unreal_mesh import mesh_lines
+    mesh = mesh_lines(shot_dir, passes_under_review(shot_dir, stage.id, changed_plan))
+    if mesh:
+        lines += [*mesh, ""]
+    lines += ["In the shot folder:"]
+    lines += [f"- {a}" for a in _artifacts(shot_dir)] or ["- (nothing yet)"]
     if plan_files:
         lines += ["", f"The plan changed since it was approved: {', '.join(plan_files)}. Judge the change first: "
                   "was it needed, and does the work now follow the new plan? The approved copy is in .kei/approved_plan/."]

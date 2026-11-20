@@ -386,6 +386,32 @@ def _pause(shot_dir: Path, state: ShotState, entry: dict, why: SeatPaused) -> Sh
     return state
 
 
+def _render_mesh(shot_dir: Path, stage_id: str, changed: list[str], config: Config) -> str | None:
+    """Before a review of an Unreal pass, the pass rendered on the real mesh (kei.apps.unreal_mesh), so the critics
+    judge the character as the game shows it. None when it is rendered or not wanted; else why it could not be, for
+    the author: the review then waits, it never goes on with Kei's line drawings alone."""
+    from kei.apps.unreal import UnrealError
+    from kei.critic import passes_under_review
+    from kei.sample import ShotError
+    if config.unreal_mesh_review != "on" or not unreal_stage.is_unreal_shot(shot_dir):
+        return None
+    if stage_id not in ("blocking", "passes") and not any(c.startswith(PASS_MARK) for c in changed):
+        return None
+    from kei.apps.unreal_rig import sequences
+    made = sequences(shot_dir)
+    for name in passes_under_review(shot_dir, stage_id, changed):
+        if not made.get(name):
+            continue   # never keyed in Unreal: nothing to render, and the critics read that it has no mesh frames
+        try:
+            unreal_stage.render_mesh(shot_dir, name, config.unreal_mesh_timeout)
+        except (UnrealError, ShotError) as e:
+            return (f"the critics have not judged {name}: Kei could not render it on the real mesh in Unreal ({e}). "
+                    "Fix that and run kei run again to resume the review (kei unreal render-mesh <shot> "
+                    f"{name} tries the render alone), or set [apps.unreal] mesh_review = \"off\" in kei.toml to "
+                    "review on Kei's line drawings only")
+    return None
+
+
 CHARACTER_ENV = "KEI_CHARACTER"   # the configured default character, for the kei render and kei bake the seats run
 FIT_REFUSED = "fit_refused"
 
@@ -732,6 +758,11 @@ def _critics(shot_dir: Path, state: ShotState, config: Config, stage: Stage, rev
         write_record(shot_dir, state)      # the bookkeeping, from Kei's state: nobody keeps it by hand
     except OSError:
         pass
+    unrendered = _render_mesh(shot_dir, stage.id, changed, config)
+    if unrendered:   # the critics judge the real mesh: a pass is never approved on line drawings in silence
+        attempt.stopped = _pause(shot_dir, state, {**entry, "phase": "review"},
+                                 SeatPaused("machine", "unreal", unrendered))
+        return
     try:
         panel = review(stage, shot_dir, changed)
     except SeatPaused as e:

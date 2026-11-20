@@ -664,6 +664,15 @@ message names it; nothing is saved.
   joints.json under `detail`, and `out_<pass>/hands_toes.json` gives each finger joint's curl and each toe's lift, with
   a flag for a finger bent backward or toes bent down.
 - `kei render <shot> <pass>` draws the views and the playback.
+- `kei unreal render-mesh <shot> <pass>` renders the pass on the character's real mesh with Movie Render Queue, every
+  frame, from a side, a three quarter and a low feet view placed off the character's own path, into
+  `out_<pass>/mesh/<view>/`, with a contact sheet per view (`out_<pass>/mesh_<view>.png`, frames labelled) and
+  `out_<pass>/mesh_report.json`. It renders in Kei's own level, `/Game/Kei/_render/L_KeiRender` (a floor, light and sky,
+  no game actors), made once from the engine's default template; the view sequences go under
+  `/Game/Kei/<shot>/Views/`. Kei does this before every review of an Unreal pass (`[apps.unreal] mesh_review = "on"`,
+  the default), and the critics judge those frames: toes or feet through or off the floor, folded toes, pops, frozen
+  limbs, stalls and sliding feet on the mesh are notes for the animator, not checks for you. A render that fails
+  pauses the shot and says why; the review never goes on with Kei's line drawings alone in silence.
 - `kei export --shot <shot> --pass <pass> --to unreal`, on an approved shot only, bakes the pass to
   `/Game/Kei/<shot>/A_<shot>_<pass>` by evaluating the rig on every frame of the delivery range and writing each bone's
   motion to the asset; each `ik_` bone is set to follow its bone. Kei then checks every `ik_` bone against its bone on
@@ -676,7 +685,7 @@ Kei sends the keys of a pass to the editor in batches of 15 frames, one undo ste
 
 After each pass Kei also asks the editor to give its memory back: it closes the sequence, unloads the shot's saved Kei sequences (an unsaved one stays), clears the undo history and collects garbage, and `unreal/memory.json` gets a row "after releasing memory" so you can see what it freed (`KEI_UNREAL_CLEANUP=0` turns it off).
 
-`kei unreal capture-test <shot> <pass>` is a test, not yet part of the review: it has the editor draw one frame of a keyed pass from the front, the side and the three quarter view (the real mesh, with a temporary camera and light that are deleted afterwards) into `out_<pass>/mesh_test/`, and says in words whether the pictures look drawn. Open them and check that they show your character.
+`kei unreal capture-test <shot> <pass>` is an older test, not part of the review (`kei unreal render-mesh` is): it has the editor draw one frame of a keyed pass from the front, the side and the three quarter view (the real mesh, with a temporary camera and light that are deleted afterwards) into `out_<pass>/mesh_test/`, and says in words whether the pictures look drawn. Open them and check that they show your character.
 
 ### Blender
 

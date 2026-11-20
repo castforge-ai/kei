@@ -110,6 +110,11 @@ that name a control and a channel of the character's Control Rig, read from rig/
 shot.json, run `kei unreal key <shot> <pass>`. It keys the controls in Kei's own sequence in the open editor and
 writes out_<pass>/joints.json from Unreal for the checks (do not run `kei bake` on an Unreal shot). A locked or
 unknown channel is refused by name; a pose a limit held back is listed in out_<pass>/unreal_report.json.
+Before the critics review an Unreal pass, Kei has the editor render it on the character's real mesh, every frame,
+from a side, a three quarter and a low feet view (out_<pass>/mesh_<view>.png, one sheet per view, frames labelled;
+full size in out_<pass>/mesh/<view>/). The critics judge those frames first: toes or feet through or off the floor,
+folded toes, pops, frozen limbs, stalls and sliding feet on the mesh come back to you as notes with their frames.
+To see them yourself before the review, run `kei unreal render-mesh <shot> <pass>` (a few minutes) and open the sheets.
 From p2 on, each pass is a layer of the one before it. Start the pass's shot.json from the previous pass's (a copy,
 every frame keyed, the same tangents) and change only the channels and the frames the pass's job or the author's
 note bears on; leave every other value exactly as it was. `kei unreal key` then copies the previous pass's sequence,

@@ -25,6 +25,26 @@ Judge the stage under review against the artifacts the earlier stages left in th
   whose reason does not hold is a fault. A pass whose extremes all still sit on the blocking keys (pose to pose) is
   a smoothed blocking, not a pass: send it back. Judge the "unchecked" ones (appeal, exaggeration) on the frames.
 
+The real mesh (a shot animated in Unreal). Kei's line drawings show the joints, not the character: a foot that
+reads flat as a line can be folded on the mesh, a toe can sink through the floor, a hand can pass through the body.
+Before each review the editor renders the pass on the character's own mesh, every frame, from a side, a three quarter
+and a low feet view; the sheets out_<pass>/mesh_<view>.png show every frame labelled F<n>, and the full-size frames
+are in out_<pass>/mesh/<view>/. The list under "The real mesh, rendered in Unreal" below names them. Open every sheet
+before you judge, and open the full-size frames where a sheet is too small to be sure. Judge the motion on the mesh
+first and the line drawings second; where they disagree, the mesh is the truth. On the mesh, each of these is a
+blocking note, sent back to the animator with its frames ("F12-F18: left toes fold up into the floor"):
+- a foot or toes through the floor, or floating off it when they should be planted;
+- toes folded or bent the wrong way, a foot rolled onto its side, a knee or an elbow that bends backwards;
+- a pop: a part that jumps between two frames;
+- a frozen limb: an arm, a hand, the head or the spine that does not move while the body moves;
+- a stall in the timing: frames where the motion stops or crawls that the plan does not hold;
+- a planted foot that slides;
+- a part through another part (a hand through the hip, an arm through the chest).
+Never hand one of these to the author as a sign-off check or a question: you can see them on the frames, so they are
+yours to judge. The sign-off checks are only for what still frames truly cannot show (the feel at full speed, a
+cycle's seam played ten times, the appeal of the whole). When the list says a pass was NOT rendered on the mesh, or
+its render failed, say so, as the list asks; never write that the mesh looks right when you have not seen it.
+
 Send the work back only for a fault you can point to. Say where it is and what to change. A send-back names a
 visible fault in the motion or a failed check: a pose, a timing, a contact, a balance, an arc, a flag left
 undeclared.
@@ -51,7 +71,8 @@ or a file pointer in PLAN.md or GATES.md that is stale or missing.
 
 Some rules ask a person to watch the work at real rate: a playback at the shot's frame rate, a cycle played about ten
 times in a row, a beat read the first time at full speed. No agent can do that viewing, the animator included, so
-never send the work back only because that viewing is missing. Instead:
+never send the work back only because that viewing is missing. That covers only playback at real rate: a fault you
+can see on the still frames (the mesh frames above included) is a note, never a viewing to ask for. Instead:
 - When the author's answers below record such a viewing, it satisfies those rules. Judge what the author saw.
 - When you need the author's eyes before you can judge, ask: add a question that names the file to watch (the
   ten-loop video is <pass folder>/<name>_x10.mp4). The shot waits for the answer, and you see it on the next try.
