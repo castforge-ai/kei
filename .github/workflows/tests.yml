@@ -14,7 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - uses: FedericoCarboni/setup-ffmpeg@v3
+      # the ffmpeg action ships x64 builds only; the macOS runners are arm64
+      - if: runner.os != 'macOS'
+        uses: FedericoCarboni/setup-ffmpeg@v3
+      - if: runner.os == 'macOS'
+        run: brew install ffmpeg
       - run: uv python install ${{ matrix.python }}
       - run: uv sync --python ${{ matrix.python }}
       # Maya and Unreal tests skip themselves when the application is not installed
