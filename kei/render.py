@@ -440,7 +440,27 @@ def _panel_inside(cv: _Canvas, ox: int, oy: int, view: str, joints: dict, bounds
     for a, b, colour in edges:      # the shot's objects, as outlines, behind the figure
         cv.line(*to_px(a), *to_px(b), colour, False)
     draw_figure(cv, to_px, joints)
-    cv.text(ox + 4, oy + 3, f"{view} {label}".strip(), TEXT, size - 8)
+    cv.text(ox + 4, oy + 3, panel_label(view, label, size - 8, VIEWS), TEXT, size - 8)
+
+
+SHORT_VIEWS = {"three quarter": "3/4"}
+
+
+def panel_label(view, label: str, max_w: int, views=()) -> str:
+    """The label of one panel, fitted to max_w pixels: the view's full name and the whole label when they fit, then
+    the short view name (3/4), then the label's last words dropped one by one (the frame number comes first and
+    stays). The choice is the same for every view in views, so the panels of one row read alike."""
+    from kei.sheet import ADVANCE
+    room = max(0, max_w // ADVANCE)
+    words = label.split()
+    names = [str(view)] + [str(v) for v in views if str(v) != str(view)]
+
+    def text(v: str, short: bool, n: int) -> str:
+        return " ".join([SHORT_VIEWS.get(v, v) if short else v] + words[:n])
+    for short, n in [(False, len(words))] + [(True, n) for n in range(len(words), -1, -1)]:
+        if all(len(text(v, short, n)) <= room for v in names):
+            return text(str(view), short, n)
+    return text(str(view), True, 0)
 
 
 def _views_on(cv: _Canvas, ox: int, oy: int, joints: dict, size: int, bounds: dict, label: str, edges=()) -> None:
@@ -787,7 +807,8 @@ def _character_panel(cv: _Canvas, ox: int, oy: int, view, ch, parts, bounds: dic
         if joints:     # the skeleton over the body: the fit sheet of an imported character
             draw_figure(cv, lambda q: (round(ox + to_px(q)[0]), round(oy + to_px(q)[1])), joints)
         if not silhouette and not clean:
-            cv.text(ox + 4, oy + 3, f"{view} {label}".strip(), TEXT, w - 8)
+            cv.text(ox + 4, oy + 3, panel_label(view, label, w - 8, CHARACTER_VIEWS if isinstance(view, str) else ()),
+                    TEXT, w - 8)
     finally:
         cv.clip = saved
 
