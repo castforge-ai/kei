@@ -156,8 +156,12 @@ def test_no_licence_no_import_and_other_formats_are_refused(tmp_path):
         import_reference(tmp_path, walk_bvh(tmp_path / "w.bvh"), licence=" ")
     c3d = tmp_path / "x.c3d"
     c3d.write_bytes(b"\x00")
-    with pytest.raises(MocapError, match="BVH"):
+    with pytest.raises(MocapError, match="not a C3D"):
         import_reference(tmp_path, c3d, licence="CC0")
+    fbx = tmp_path / "x.fbx"
+    fbx.write_bytes(b"\x00")
+    with pytest.raises(MocapError, match="BVH .* and C3D"):
+        import_reference(tmp_path, fbx, licence="CC0")
 
 
 def test_a_skeleton_without_arms_names_the_missing_bones(tmp_path):

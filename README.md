@@ -81,11 +81,12 @@ No stage is ever skipped, on any shot, however small.
   its short look there: frames pulled into the shot's own `.kei/look/` folder, measured, never traced, and no clip
   copied into the shot. Kei ships no footage.
 - **Motion capture you may use, as measured reference.** `kei ref import <shot> <file.bvh> --licence "CC0" --source
-  <url>` reads a BVH capture (CMU, Mixamo, Rokoko and most others name their joints in a way Kei matches), turns it
-  into Kei's joints, and writes `refs/mocap/<name>/`: the joints per frame, what `kei check` measures on it, the
+  <url>` reads a BVH capture (CMU, Mixamo, Rokoko and most others name their joints in a way Kei matches) or a C3D
+  of skin markers (the Plug-in Gait set and its CMU variant: Kei estimates the joint centres inside the markers, the
+  hips by Bell's regression, so they are within a few centimetres), turns it into Kei's joints, and writes `refs/mocap/<name>/`: the joints per frame, what `kei check` measures on it, the
   pelvis bob, the travel and speed, each foot's contact frames, a sheet of eight frames, the source and licence as you
   stated them, and a row for `REFS.md`. The plan measures against it; the keys are never traced from it. Kei refuses a
-  file with no licence. C3D marker data is not read: convert it to BVH in your capture tool first.
+  file with no licence. A C3D with another marker set is refused by name: convert it to BVH in your capture tool.
 - **A person signs off.** A finished shot waits for your approval. A note you give sends it back, and becomes a lesson.
   A note after you approved withdraws the approval and opens the shot again.
 

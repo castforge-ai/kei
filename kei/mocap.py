@@ -261,6 +261,13 @@ def to_bones(bvh: Bvh, units: str | None = None) -> tuple[list[dict], dict, str]
         b["neck_02"] = _lerp(b["neck_01"], b["head"], 0.5)
         b["root"] = (b["pelvis"][0], b["pelvis"][1], 0.0)
         out.append(b)
+    mapping = {**m, "spine": ", ".join(chain) or "(none: spread from the hips to the neck)"}
+    out, skipped = _finish(out)
+    return out, mapping, unit, skipped
+
+
+def _finish(out: list[dict]) -> tuple[list[dict], int]:
+    """A clip's bones made ready: a leading T-pose dropped, the floor put under the ankles (cm, z up)."""
     skipped = 0
     while len(out) > 1 and _t_pose(out[0]):     # CMU and others start on a T-pose frame: it is no part of the motion
         out.pop(0)
@@ -271,8 +278,149 @@ def to_bones(bvh: Bvh, units: str | None = None) -> tuple[list[dict], dict, str]
     for f in out:
         for bone, p in f.items():
             f[bone] = [p[0], p[1], p[2] - floor] if bone != "root" else [p[0], p[1], 0.0]
-    mapping = {**m, "spine": ", ".join(chain) or "(none: spread from the hips to the neck)"}
-    return out, mapping, unit, skipped
+    return out, skipped
+
+
+# ---- C3D: skin markers to joint centres ------------------------------------------------------------------------------
+# The markers of the Vicon Plug-in Gait set and its CMU variant sit on the skin over bony landmarks; a joint centre
+# lies a known distance inside them. The offsets below are the usual adult ones (marker radius included), so the joint
+# centres are estimates within a few centimetres: enough for a reference's timing, bob, travel and contacts, which is
+# all Kei takes from it. The hip centres follow Bell's regression from the pelvis markers (19 % of the pelvis width
+# back, 30 % down, 36 % out from the front markers' midpoint).
+MARKERS = {
+    "waist": (("LASI", "LFWT"), ("RASI", "RFWT"), ("LPSI", "LBWT"), ("RPSI", "RBWT")),
+    "leg": ("KNE", "ANK", "TOE"),
+    "arm": ("SHO", "ELB", "WRA", "WRB"),
+    "trunk": ("C7", "CLAV"),
+    "head": ("LFHD", "RFHD", "LBHD", "RBHD"),
+}
+KNEE_IN, ANKLE_IN, ELBOW_IN = 5.7, 4.2, 3.5      # cm from the lateral marker to the joint centre
+SHOULDER_DOWN, HEAD_DOWN, TOE_DOWN = 4.5, 7.0, 1.5
+
+
+def _v(a, b):
+    return tuple(b[i] - a[i] for i in range(3))
+
+
+def _n(v):
+    d = math.sqrt(sum(c * c for c in v)) or 1.0
+    return tuple(c / d for c in v)
+
+
+def _x(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+
+def _add(p, d, k):
+    return tuple(p[i] + d[i] * k for i in range(3))
+
+
+def _mid(*ps):
+    return tuple(sum(p[i] for p in ps) / len(ps) for i in range(3))
+
+
+def _filled(frames: list[dict], label: str) -> list | None:
+    """A marker's track with the frames the cameras lost filled in a straight line between the frames around them
+    (the first or last seen at the ends); None when the marker is never seen."""
+    seen = [i for i, fr in enumerate(frames) if label in fr]
+    if not seen:
+        return None
+    out = []
+    for i, fr in enumerate(frames):
+        if label in fr:
+            out.append(fr[label])
+            continue
+        before = max((j for j in seen if j < i), default=None)
+        after = min((j for j in seen if j > i), default=None)
+        if before is None or after is None:
+            out.append(frames[before if after is None else after][label])
+        else:
+            out.append(_lerp(frames[before][label], frames[after][label], (i - before) / (after - before)))
+    return out
+
+
+def markers_to_bones(c3d) -> tuple[list[dict], dict, str, int]:
+    """The C3D's markers as the mannequin's bones per frame (cm, z up, in the same space to_bones gives), the marker
+    each bone was found from, the units, and the T-pose frames dropped."""
+    k = {"mm": 0.1, "cm": 1.0, "m": 100.0}.get(c3d.units)
+    if k is None:
+        raise MocapError(f"the C3D says its points are in {c3d.units!r}; Kei reads mm, cm or m")
+    by = {}
+    for lab in c3d.labels:
+        by.setdefault(lab.split(":")[-1].strip().upper(), lab)
+
+    def track(*names):
+        for n in names:
+            if n in by:
+                t = _filled(c3d.frames, by[n])
+                if t is not None:   # the lab is right handed, z up; Kei's capture space is left handed: y flips
+                    return [(p[0] * k, -p[1] * k, p[2] * k) for p in t], n
+        return None, None
+
+    used, T, missing = {}, {}, []
+    for key, names in (("lasi", MARKERS["waist"][0]), ("rasi", MARKERS["waist"][1]), ("lpsi", MARKERS["waist"][2]),
+                       ("rpsi", MARKERS["waist"][3])):
+        T[key], used[key] = track(*names)
+    for s in "LR":
+        for m in MARKERS["leg"] + MARKERS["arm"] + ("FIN", "HEE"):
+            T[s + m], used[s + m] = track(s + m)
+    for m in MARKERS["trunk"] + MARKERS["head"] + ("T10", "STRN"):
+        T[m], used[m] = track(m)
+    optional = {"LFIN", "RFIN", "LHEE", "RHEE", "T10", "STRN"}
+    missing = [n for n, t in T.items() if t is None and n not in optional]
+    if missing:
+        raise MocapError("the C3D has no marker for " + ", ".join(n.upper() for n in missing) + ": Kei reads the "
+                         "Plug-in Gait set (LASI or LFWT, LKNE, LANK, LTOE, LSHO, LELB, LWRA, LWRB, C7, CLAV, the head "
+                         "markers ...); convert other sets to BVH in your capture tool")
+    out = []
+    for i in range(len(c3d.frames)):
+        g = {n: t[i] for n, t in T.items() if t is not None}
+        front, back = _mid(g["lasi"], g["rasi"]), _mid(g["lpsi"], g["rpsi"])
+        width = math.dist(g["lasi"], g["rasi"])
+        right = _n(_v(g["lasi"], g["rasi"]))
+        fwd0 = _v(back, front)
+        fwd = _n(_v(tuple(right[j] * sum(fwd0[q] * right[q] for q in range(3)) for j in range(3)), fwd0))
+        up = _n(_x(right, fwd))
+        if up[2] < 0:
+            up = tuple(-c for c in up)
+        b = {}
+        for s, side in (("l", -1.0), ("r", 1.0)):
+            S = s.upper()
+            hip = _add(_add(_add(front, fwd, -0.19 * width), up, -0.30 * width), right, side * 0.36 * width)
+            knee = _add(g[S + "KNE"], right, -side * KNEE_IN)
+            ankle = _add(g[S + "ANK"], right, -side * ANKLE_IN)
+            b[f"thigh_{s}"], b[f"calf_{s}"], b[f"foot_{s}"] = hip, knee, ankle
+            b[f"ball_{s}"] = (g[S + "TOE"][0], g[S + "TOE"][1], g[S + "TOE"][2] - TOE_DOWN)
+        torso_up = _n(_v(_mid(b["thigh_l"], b["thigh_r"]), _mid(g["C7"], g["CLAV"])))
+        for s, side in (("l", -1.0), ("r", 1.0)):
+            S = s.upper()
+            shoulder = _add(g[S + "SHO"], torso_up, -SHOULDER_DOWN)
+            wrist = _mid(g[S + "WRA"], g[S + "WRB"])
+            line = _v(shoulder, wrist)
+            ll = sum(c * c for c in line) or 1.0
+            t = sum(_v(shoulder, g[S + "ELB"])[q] * line[q] for q in range(3)) / ll
+            foot_of = _add(shoulder, line, t)
+            elbow = _add(g[S + "ELB"], _n(_v(g[S + "ELB"], foot_of)), ELBOW_IN)
+            b[f"upperarm_{s}"], b[f"lowerarm_{s}"], b[f"hand_{s}"] = shoulder, elbow, wrist
+            b[f"clavicle_{s}"] = _add(_lerp(g["CLAV"], g["C7"], 0.3), right, side * 2.0)
+        b["pelvis"] = _add(_mid(b["thigh_l"], b["thigh_r"]), up, 2.0)
+        b["neck_01"] = _add(_mid(g["C7"], g["CLAV"]), torso_up, 2.0)
+        b["head"] = _add(_mid(*(g[m] for m in MARKERS["head"])), torso_up, -HEAD_DOWN)
+        chest = _mid(*(g[m] for m in ("C7", "CLAV", "T10", "STRN") if m in g))
+        pts = [b["pelvis"], chest, b["neck_01"]]
+        lengths = [0.0, math.dist(pts[0], pts[1]), math.dist(pts[0], pts[1]) + math.dist(pts[1], pts[2])]
+        for n in range(5):
+            tt = (n + 1) / 6 * lengths[-1]
+            seg = 1 if tt <= lengths[1] else 2
+            u = (tt - lengths[seg - 1]) / max(lengths[seg] - lengths[seg - 1], 1e-9)
+            b[f"spine_0{n + 1}"] = _lerp(pts[seg - 1], pts[seg], u)
+        b["neck_02"] = _lerp(b["neck_01"], b["head"], 0.5)
+        b["root"] = (b["pelvis"][0], b["pelvis"][1], 0.0)
+        out.append(b)
+    mapping = {"joint centres": "estimated from the skin markers (Plug-in Gait offsets; hips by Bell's regression)",
+               **{n: by[m] for n, m in used.items() if m}}
+    out, skipped = _finish(out)
+    return out, mapping, c3d.units, skipped
 
 
 def _t_pose(b: dict) -> bool:
@@ -324,13 +472,24 @@ def import_reference(shot: Path, path: Path, licence: str, source: str = "", uni
         raise MocapError("say the capture's licence with --licence (for example \"CC0\" or \"CMU: free for any use\"): "
                          "Kei imports only capture you may use")
     shot, path = Path(shot), Path(path)
-    if path.suffix.lower() != ".bvh":
-        raise MocapError(f"{path.name}: Kei reads BVH capture; convert C3D marker data to BVH in your capture tool")
-    bvh = read_bvh(path)
-    bones, mapping, unit, skipped = to_bones(bvh, units)
+    suffix = path.suffix.lower()
+    if suffix == ".c3d":
+        from kei.c3d import C3dError, read_c3d
+        try:
+            c3d = read_c3d(path)
+        except C3dError as e:
+            raise MocapError(str(e)) from None
+        bones, mapping, unit, skipped = markers_to_bones(c3d)
+        frame_time = 1.0 / c3d.rate
+    elif suffix == ".bvh":
+        bvh = read_bvh(path)
+        bones, mapping, unit, skipped = to_bones(bvh, units)
+        frame_time = bvh.frame_time
+    else:
+        raise MocapError(f"{path.name}: Kei reads BVH (joint rotations) and C3D (skin markers) capture")
     frame = frame_from_rest(tuple(bones[0]["thigh_l"]), tuple(bones[0]["thigh_r"]))
     frames = [{"f": i, "joints": joints_from_bones(b, frame)} for i, b in enumerate(bones)]
-    fps = round(1.0 / bvh.frame_time, 3)
+    fps = round(1.0 / frame_time, 3)
     height = max(fr["joints"]["head_top"][1] for fr in frames[:1])
     name = name or re.sub(r"[^a-z0-9]+", "-", path.stem.lower()).strip("-") or "capture"
     out = shot / "refs" / "mocap" / name
@@ -373,7 +532,7 @@ def import_reference(shot: Path, path: Path, licence: str, source: str = "", uni
                  f"- Source: {source.strip() or 'not given'}", f"- Imported: {now}", f"- Frame rate: {fps:g} fps",
                  f"- Units in the file: {unit}", f"- Frames: {len(frames)}", "",
                  "This capture is a measured stand-in reference. Its numbers inform the plan; the keys are never "
-                 "traced from it.", "", "## Bone map (Kei's bone: the file's joint)", ""]
+                 "traced from it.", "", "## Bone map (Kei's bone: the file's joint, or for C3D the marker it was estimated from)", ""]
     src_lines += [f"- {b}: {n}" for b, n in sorted(mapping.items())]
     (out / "SOURCE.md").write_text("\n".join(src_lines) + "\n", encoding="utf-8", newline="\n")
     row = (f"| {name} | capture ({licence.strip()}) | measured motion: {measures['seconds']} s at {fps:g} fps, "

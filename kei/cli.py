@@ -1922,7 +1922,7 @@ def main(argv: list[str] | None = None) -> int:
     ri = rfs.add_parser("import", help="read a BVH capture into <shot>/refs/mocap/<name>/: Kei's joints per frame, "
                                        "the measures, a sheet and the source; never turned into keys")
     ri.add_argument("shot")
-    ri.add_argument("file", help="a .bvh file")
+    ri.add_argument("file", help="a .bvh file, or a .c3d of Plug-in Gait markers")
     ri.add_argument("--licence", required=True, help="the capture's licence, as its source states it (CC0, ...)")
     ri.add_argument("--source", help="where it comes from (a URL or a name)")
     ri.add_argument("--units", choices=("cm", "m", "in", "mm", "cmu"),

@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -537,6 +538,52 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
     if not state.request:
         state.request = request
         save_state(shot_dir, state)
+    stopped = _prepare_apps(shot_dir, state, config)
+    if stopped is not None:
+        return stopped
+    while state.status == "running":
+        stage = stage_by_id(state.stage)
+        attempt = _attempt(shot_dir, state, config, stage, animator, review, held, topics, lessons, at_review)
+        at_review = False
+        if attempt.stopped is not None:
+            return attempt.stopped
+        if attempt.again:
+            continue
+        _record(shot_dir, state, config, stage, attempt)
+        save_state(shot_dir, state)
+    return state
+
+
+# ---- one try of a stage ---------------------------------------------------------------------------------------------
+# A try ends in one of these results (entry["result"] in the history):
+#   pass        the gate and the critics passed: the stage is done
+#   escalated   the send-back limit was reached with "advance": the open notes wait at the sign-off
+#   fail        the gate refused it: a try is spent
+#   seat_error  the animator's seat failed: a try is spent
+#   send_back   a critic sent it back: a send-back is spent
+#   records     the critics asked only for records: the stage runs again, nothing spent
+#   timeout     the seat ran out of time: the stage runs again, nothing spent (up to MAX_TIMEOUTS)
+#   reused      a character folder's evaluation went into the shot (written before the try)
+RESULTS = ("pass", "escalated", "fail", "seat_error", "send_back", "records", "timeout", "reused")
+
+
+@dataclass
+class Attempt:
+    """One try of a stage: its history entry, the misses it ends with, and how the run goes on after it."""
+    entry: dict
+    misses: list = field(default_factory=list)
+    size_stop: bool = False                  # the rule text grew past the limit: a person, never a retry
+    stopped: ShotState | None = None         # the run stops here (paused, asking, or a person must act)
+    again: bool = False                      # the stage runs again at once (an uncounted timeout)
+
+    @property
+    def result(self) -> str:
+        return self.entry.get("result", "")
+
+
+def _prepare_apps(shot_dir: Path, state: ShotState, config: Config) -> ShotState | None:
+    """Get the app a shot animates in ready before the first stage (Maya, Blender, Unreal). The state the run stops
+    on when the author must choose, the app cannot, or a person must act; None to go on."""
     if maya_stage.wants_maya(shot_dir, config.app):   # where to animate (asked when Maya is open), the scene, the rig
         need = maya_stage.prepare(shot_dir, config)
         entry = {"stage": state.stage, "attempt": state.attempts + 1, "at": _now(), "misses": []}
@@ -563,174 +610,198 @@ def _run_shot(shot_dir: Path, request: str, config: Config, animator: Seat | Non
             state.history.append({**entry, "result": "fail", "misses": [need["human"]]})
             save_state(shot_dir, state)
             return state
-    while state.status == "running":
-        stage = stage_by_id(state.stage)
-        rules = _rules(stage.id, shot_dir, topics, lessons, state)
-        stop = _too_much(stage.id, rules, config.max_rule_chars)
-        if stage.id == "brief":
-            rules += (f"\n\nThe configured default is {config.character}: with no Character line in PLAN.md, "
-                      f"{config.character} performs.")
-        if stop:
-            state.status = "needs_human"
-            state.history.append({"stage": stage.id, "attempt": state.attempts + 1, "at": _now(),
-                                  "result": "fail", "misses": [stop]})
-            save_state(shot_dir, state)
-            return state
-        if not at_review:
-            stopped = _fit_gate(shot_dir, state, config, stage.id)
-            if stopped is not None:
-                return stopped
-        reuse = None if at_review else _reuse(shot_dir, state, config, stage.id)
-        if reuse is not None:   # the character folder's evaluation goes into the shot; the gate still checks it
-            character_folder.apply_reuse(shot_dir, reuse)
-            state.history.append({"stage": stage.id, "attempt": state.attempts + 1, "at": _now(), "result": "reused",
-                                  "reused": "; ".join(reuse.messages()), "misses": []})
-            save_state(shot_dir, state)
-        carried = carried_notes(state)
-        folder_notes = character_folder.reuse_notes(reuse) if reuse else []
-        if stage.id == "references":   # a vetted REFS.md of the same action on this character, as a draft
-            folder_notes += character_folder.draft_notes(
-                character_folder.draft_refs(shot_dir, state.request, config.character))
-        prompt = stage_prompt(stage, shot_dir, state.request, carried["gate"], rules,
-                              critic_notes=carried["critics"], author_notes=_animator_notes(state, shot_dir),
-                              questions=_open_questions(state), answers=state.answers,
-                              character=_character(shot_dir, config), look_at=carried_drawings(state),
-                              kei_notes=folder_notes, refs_library=config.refs_library)
-        if at_review:
-            at_review = False
-            result = SeatResult(0, "resumed at the review")
-        elif reuse is not None and reuse.whole:
-            result = SeatResult(0, "reused")   # no seat measures the body again
-        else:
-            result = _run_animator(animator, prompt, shot_dir, state, stage.id, config.stage_timeouts.get(stage.id))
-            if reuse is not None:
-                character_folder.apply_reuse(shot_dir, reuse)   # a reused section the animator dropped is put back
-        entry = {"stage": stage.id, "attempt": state.attempts + 1, "at": _now(),
-                 **(state.__dict__.pop("last_run", None) or {})}
-        if reuse is not None and reuse.whole:
-            entry["reused_all"] = True
-        kind = pause_kind(result)
-        if kind:
-            return _pause(shot_dir, state, entry, SeatPaused(kind, animator.name, result.output.strip()))
-        if result.exit_code == 124 and _timeouts(state, stage.id) < MAX_TIMEOUTS:
-            # out of time: the work stays (files, and the resumed session), and the try is not counted
-            state.history.append({**entry, "result": "timeout", "misses": [TIMEOUT_NOTE]})
-            save_state(shot_dir, state)
-            continue
-        lost = maya_stage.take_pause(shot_dir)   # the open Maya stopped answering mid-pass: never on in silence
-        if lost:
-            return _pause(shot_dir, state, entry, SeatPaused("machine", "maya", lost))
-        lost = unreal_stage.take_pause(shot_dir)   # the open Unreal Editor stopped answering: never on in silence
-        if lost:
-            return _pause(shot_dir, state, entry, SeatPaused("machine", "unreal", lost))
-        stuck = unreal_stage.take_human(shot_dir)   # Kei made a user asset dirty: a person acts first
-        if stuck:
-            state.status = "needs_human"
-            state.history.append({**entry, "result": "fail", "misses": [stuck]})
-            save_state(shot_dir, state)
-            return state
-        size_stop = False
-        q = _questions(shot_dir)
-        if q is not None and result.exit_code == 0:   # any stage may ask the author; it stops until kei answer
-            text = q.read_text(encoding="utf-8").strip()
-            return _ask(shot_dir, state, {**entry, "misses": []},
-                        [{"from": "animator", "stage": stage.id, "text": text, "look_at": look_at_paths(text)}])
-        if result.exit_code != 0:
-            misses = [capped(result.output) or f"the seat exited with code {result.exit_code}"]
-            entry["result"] = "seat_error"
-        else:
-            misses = _draw_sheet(shot_dir)
-            records_for_review(shot_dir, stage.id, _character(shot_dir, config))   # the critics read the records
-            misses += stage_misses(shot_dir, stage)
-            misses += subject_misses(shot_dir, topics, required=stage.id == "brief")
-            misses += character_misses(shot_dir)
-            misses += target_misses(shot_dir, carried_poses(state))   # the author's feedback pose, if any
-            misses += source_misses(shot_dir, config.banned_names)   # names the author banned, kept on their machine
-            if stage.id in ("blocking", "passes", "checks", "self_review", "deliver"):
-                # a fault fixed earlier in the shot that came back fails the try before any critic runs
-                newest = "blocking" if stage.id == "blocking" else latest_pass(shot_dir, "passes")
-                misses += [f"regression of a fixed note: {r}" for r in ledger_regressions(shot_dir, state, newest)]
-            if stage.id in ("passes", "checks", "self_review", "deliver"):
-                misses += refinement_misses(shot_dir)   # a pass that changes nothing, or one keyed on every frame
-            if not misses:
-                held["rules"] = _rules(stage.id, shot_dir, topics, lessons, state)
-                held["critic_rules"] = _critic_rules(stage.id, shot_dir, topics, lessons, state, config.book)
-                stop = _too_much(stage.id, held["rules"], config.max_rule_chars)
-                if stop:
-                    misses = [stop]
-                    size_stop = True
-            entry["result"] = "fail" if misses else "pass"
-            if not misses and not entry.get("reused_all"):   # a reused evaluation was reviewed when it was made
-                snapshot = read_plan(shot_dir)   # what the critics judge; a later edit is not approved with it
-                changed = plan_changes(shot_dir, state.approved_plan, snapshot)
-                changed += pass_changes(shot_dir, stage.id, state.approved_pass)
-                try:
-                    from kei.record import write_record
-                    write_record(shot_dir, state)      # the bookkeeping, from Kei's state: nobody keeps it by hand
-                except OSError:
-                    pass
-                try:
-                    panel = review(stage, shot_dir, changed)
-                except SeatPaused as e:
-                    return _pause(shot_dir, state, {**entry, "phase": "review"}, e)
-                misses = list(panel)
-                _add_sign_off(state, stage.id, getattr(panel, "sign_off", []))
-                asked = getattr(panel, "questions", [])
-                if asked:   # a critic asks the author: no send-back is counted; the answer goes to the next try
-                    return _ask(shot_dir, state, {**entry, "misses": misses},
-                                [{**qq, "stage": stage.id} for qq in asked])
-                records = list(getattr(panel, "records", []))
-                if records:
-                    entry["records"] = records
-                minor = list(getattr(panel, "minor", []))
-                if minor:
-                    entry["minor"] = minor      # read by the animator with a send-back; never a send-back itself
-                judged = list(getattr(panel, "earlier", []))
-                if judged:
-                    entry["earlier"] = [{"from": c, "note": n, "status": st} for c, n, st in judged]
-                    ledger_reopen(state, stage.id, entry["earlier"])
-                    ledger_close(state, stage.id, entry["earlier"], _now())
-                entry["result"] = "send_back" if misses else "pass"
-                if misses and state.send_backs + 1 >= config.send_backs_for(stage.id) \
-                        and config.on_send_back_limit == "advance":
-                    _limit_reached(state, stage.id, config, misses)
-                    entry["result"] = "escalated"      # never silent: the open notes wait at the sign-off
-                if not misses and records and not _had_records_round(state):
-                    # only records asked for: a note for the animator's next try, which spends no send-back and no
-                    # try; asked again after that round, they go on with the stage
-                    entry["result"], entry["notes"] = "records", records
-                if entry["result"] in ("pass", "escalated") and (stage.id == "passes" or
-                                                                 any(c.startswith(PASS_MARK) for c in changed)):
-                    state.approved_pass = pass_stamp(shot_dir)
-                if entry["result"] in ("pass", "escalated") and (stage.id == "plan" or
-                                                                 any(not c.startswith(PASS_MARK) for c in changed)):
-                    state.approved_plan = approve_plan(shot_dir, snapshot)
-        entry["misses"] = misses
-        state.history.append(entry)
-        if entry["result"] in ("pass", "escalated"):
-            current = shot_subjects(shot_dir)
-            if stage.id == "brief":
-                state.subjects = current   # the set only grows from here
-            elif state.subjects is not None:
-                state.subjects = effective_subjects(state.subjects, current)
-            if stage.id == "weight":   # a complete evaluation made in a character folder is kept there
-                character_folder.save_evaluations(shot_dir, config.character)
-            nxt = next_stage(stage.id)
-            state.attempts = 0
-            state.send_backs = 0
-            if nxt is None:
-                state.status = "needs_approval"   # a person signs off every shot: kei approve, or kei note
-            else:
-                state.stage = nxt.id
-        elif entry["result"] == "records":
-            pass                                   # the stage runs again for the records, its budgets untouched
-        elif entry["result"] == "send_back":
-            state.send_backs += 1
-            if state.send_backs >= config.send_backs_for(stage.id) and _limit_reached(state, stage.id, config, misses) == "stop":
-                state.status = "needs_human"
-        else:
-            state.attempts += 1
-            if state.attempts >= config.attempts_for(stage.id) or size_stop:
-                state.status = "needs_human"   # too much rule text goes to a person, never to a retry
-        save_state(shot_dir, state)
+    return None
+
+
+def _needs_human(shot_dir: Path, state: ShotState, entry: dict, why: str) -> ShotState:
+    state.status = "needs_human"
+    state.history.append({**entry, "result": "fail", "misses": [why]})
+    save_state(shot_dir, state)
     return state
+
+
+def _attempt(shot_dir: Path, state: ShotState, config: Config, stage: Stage, animator: Seat, review, held: dict,
+             topics, lessons, at_review: bool) -> Attempt:
+    """Run the stage once: the animator's seat (unless the work is reused or only the review was owed), then the
+    gate, then the critics."""
+    rules = _rules(stage.id, shot_dir, topics, lessons, state)
+    stop = _too_much(stage.id, rules, config.max_rule_chars)
+    if stage.id == "brief":
+        rules += (f"\n\nThe configured default is {config.character}: with no Character line in PLAN.md, "
+                  f"{config.character} performs.")
+    if stop:
+        entry = {"stage": stage.id, "attempt": state.attempts + 1, "at": _now()}
+        return Attempt(entry, stopped=_needs_human(shot_dir, state, entry, stop))
+    if not at_review:
+        stopped = _fit_gate(shot_dir, state, config, stage.id)
+        if stopped is not None:
+            return Attempt({}, stopped=stopped)
+    reuse = None if at_review else _reuse(shot_dir, state, config, stage.id)
+    if reuse is not None:   # the character folder's evaluation goes into the shot; the gate still checks it
+        character_folder.apply_reuse(shot_dir, reuse)
+        state.history.append({"stage": stage.id, "attempt": state.attempts + 1, "at": _now(), "result": "reused",
+                              "reused": "; ".join(reuse.messages()), "misses": []})
+        save_state(shot_dir, state)
+    carried = carried_notes(state)
+    folder_notes = character_folder.reuse_notes(reuse) if reuse else []
+    if stage.id == "references":   # a vetted REFS.md of the same action on this character, as a draft
+        folder_notes += character_folder.draft_notes(
+            character_folder.draft_refs(shot_dir, state.request, config.character))
+    prompt = stage_prompt(stage, shot_dir, state.request, carried["gate"], rules,
+                          critic_notes=carried["critics"], author_notes=_animator_notes(state, shot_dir),
+                          questions=_open_questions(state), answers=state.answers,
+                          character=_character(shot_dir, config), look_at=carried_drawings(state),
+                          kei_notes=folder_notes, refs_library=config.refs_library)
+    if at_review:
+        result = SeatResult(0, "resumed at the review")
+    elif reuse is not None and reuse.whole:
+        result = SeatResult(0, "reused")   # no seat measures the body again
+    else:
+        result = _run_animator(animator, prompt, shot_dir, state, stage.id, config.stage_timeouts.get(stage.id))
+        if reuse is not None:
+            character_folder.apply_reuse(shot_dir, reuse)   # a reused section the animator dropped is put back
+    entry = {"stage": stage.id, "attempt": state.attempts + 1, "at": _now(),
+             **(state.__dict__.pop("last_run", None) or {})}
+    if reuse is not None and reuse.whole:
+        entry["reused_all"] = True
+    kind = pause_kind(result)
+    if kind:
+        return Attempt(entry, stopped=_pause(shot_dir, state, entry, SeatPaused(kind, animator.name,
+                                                                               result.output.strip())))
+    if result.exit_code == 124 and _timeouts(state, stage.id) < MAX_TIMEOUTS:
+        # out of time: the work stays (files, and the resumed session), and the try is not counted
+        state.history.append({**entry, "result": "timeout", "misses": [TIMEOUT_NOTE]})
+        save_state(shot_dir, state)
+        return Attempt(entry, again=True)
+    for app, take in (("maya", maya_stage.take_pause), ("unreal", unreal_stage.take_pause)):
+        lost = take(shot_dir)     # the open Maya or Unreal Editor stopped answering mid-pass: never on in silence
+        if lost:
+            return Attempt(entry, stopped=_pause(shot_dir, state, entry, SeatPaused("machine", app, lost)))
+    stuck = unreal_stage.take_human(shot_dir)   # Kei made a user asset dirty: a person acts first
+    if stuck:
+        return Attempt(entry, stopped=_needs_human(shot_dir, state, entry, stuck))
+    q = _questions(shot_dir)
+    if q is not None and result.exit_code == 0:   # any stage may ask the author; it stops until kei answer
+        text = q.read_text(encoding="utf-8").strip()
+        return Attempt(entry, stopped=_ask(shot_dir, state, {**entry, "misses": []},
+                                           [{"from": "animator", "stage": stage.id, "text": text,
+                                             "look_at": look_at_paths(text)}]))
+    if result.exit_code != 0:
+        entry["result"] = "seat_error"
+        return Attempt(entry, [capped(result.output) or f"the seat exited with code {result.exit_code}"])
+    attempt = Attempt(entry, _gate_misses(shot_dir, state, config, stage, topics))
+    if not attempt.misses:
+        held["rules"] = _rules(stage.id, shot_dir, topics, lessons, state)
+        held["critic_rules"] = _critic_rules(stage.id, shot_dir, topics, lessons, state, config.book)
+        stop = _too_much(stage.id, held["rules"], config.max_rule_chars)
+        if stop:
+            attempt.misses, attempt.size_stop = [stop], True
+    entry["result"] = "fail" if attempt.misses else "pass"
+    if not attempt.misses and not entry.get("reused_all"):   # a reused evaluation was reviewed when it was made
+        _critics(shot_dir, state, config, stage, review, attempt)
+    return attempt
+
+
+def _gate_misses(shot_dir: Path, state: ShotState, config: Config, stage: Stage, topics) -> list:
+    """Every fault Kei's own gate finds in the try, before any critic reads it."""
+    misses = _draw_sheet(shot_dir)
+    records_for_review(shot_dir, stage.id, _character(shot_dir, config))   # the critics read the records
+    misses += stage_misses(shot_dir, stage)
+    misses += subject_misses(shot_dir, topics, required=stage.id == "brief")
+    misses += character_misses(shot_dir)
+    misses += target_misses(shot_dir, carried_poses(state))   # the author's feedback pose, if any
+    misses += source_misses(shot_dir, config.banned_names)   # names the author banned, kept on their machine
+    if stage.id in ("blocking", "passes", "checks", "self_review", "deliver"):
+        # a fault fixed earlier in the shot that came back fails the try before any critic runs
+        newest = "blocking" if stage.id == "blocking" else latest_pass(shot_dir, "passes")
+        misses += [f"regression of a fixed note: {r}" for r in ledger_regressions(shot_dir, state, newest)]
+    if stage.id in ("passes", "checks", "self_review", "deliver"):
+        misses += refinement_misses(shot_dir)   # a pass that changes nothing, or one keyed on every frame
+    return misses
+
+
+def _critics(shot_dir: Path, state: ShotState, config: Config, stage: Stage, review, attempt: Attempt) -> None:
+    """The critics judge a try the gate passed; their verdict sets the attempt's result and misses (or stops the
+    run: a usage limit, a question for the author)."""
+    entry = attempt.entry
+    snapshot = read_plan(shot_dir)   # what the critics judge; a later edit is not approved with it
+    changed = plan_changes(shot_dir, state.approved_plan, snapshot)
+    changed += pass_changes(shot_dir, stage.id, state.approved_pass)
+    try:
+        from kei.record import write_record
+        write_record(shot_dir, state)      # the bookkeeping, from Kei's state: nobody keeps it by hand
+    except OSError:
+        pass
+    try:
+        panel = review(stage, shot_dir, changed)
+    except SeatPaused as e:
+        attempt.stopped = _pause(shot_dir, state, {**entry, "phase": "review"}, e)
+        return
+    misses = list(panel)
+    _add_sign_off(state, stage.id, getattr(panel, "sign_off", []))
+    asked = getattr(panel, "questions", [])
+    if asked:   # a critic asks the author: no send-back is counted; the answer goes to the next try
+        attempt.stopped = _ask(shot_dir, state, {**entry, "misses": misses},
+                               [{**qq, "stage": stage.id} for qq in asked])
+        return
+    records = list(getattr(panel, "records", []))
+    if records:
+        entry["records"] = records
+    minor = list(getattr(panel, "minor", []))
+    if minor:
+        entry["minor"] = minor      # read by the animator with a send-back; never a send-back itself
+    judged = list(getattr(panel, "earlier", []))
+    if judged:
+        entry["earlier"] = [{"from": c, "note": n, "status": st} for c, n, st in judged]
+        ledger_reopen(state, stage.id, entry["earlier"])
+        ledger_close(state, stage.id, entry["earlier"], _now())
+    entry["result"] = "send_back" if misses else "pass"
+    if misses and state.send_backs + 1 >= config.send_backs_for(stage.id) \
+            and config.on_send_back_limit == "advance":
+        _limit_reached(state, stage.id, config, misses)
+        entry["result"] = "escalated"      # never silent: the open notes wait at the sign-off
+    if not misses and records and not _had_records_round(state):
+        # only records asked for: a note for the animator's next try, which spends no send-back and no try; asked
+        # again after that round, they go on with the stage
+        entry["result"], entry["notes"] = "records", records
+    if entry["result"] in ("pass", "escalated") and (stage.id == "passes" or
+                                                     any(c.startswith(PASS_MARK) for c in changed)):
+        state.approved_pass = pass_stamp(shot_dir)
+    if entry["result"] in ("pass", "escalated") and (stage.id == "plan" or
+                                                     any(not c.startswith(PASS_MARK) for c in changed)):
+        state.approved_plan = approve_plan(shot_dir, snapshot)
+    attempt.misses = misses
+
+
+def _record(shot_dir: Path, state: ShotState, config: Config, stage: Stage, attempt: Attempt) -> None:
+    """A finished try into the history, and what it spends: the next stage after a pass, a try after a failure, a
+    send-back after a critic's note; at a budget's end the shot waits for a person."""
+    entry, misses = attempt.entry, attempt.misses
+    entry["misses"] = misses
+    state.history.append(entry)
+    if attempt.result in ("pass", "escalated"):
+        current = shot_subjects(shot_dir)
+        if stage.id == "brief":
+            state.subjects = current   # the set only grows from here
+        elif state.subjects is not None:
+            state.subjects = effective_subjects(state.subjects, current)
+        if stage.id == "weight":   # a complete evaluation made in a character folder is kept there
+            character_folder.save_evaluations(shot_dir, config.character)
+        nxt = next_stage(stage.id)
+        state.attempts = 0
+        state.send_backs = 0
+        if nxt is None:
+            state.status = "needs_approval"   # a person signs off every shot: kei approve, or kei note
+        else:
+            state.stage = nxt.id
+    elif attempt.result == "records":
+        pass                                   # the stage runs again for the records, its budgets untouched
+    elif attempt.result == "send_back":
+        state.send_backs += 1
+        if state.send_backs >= config.send_backs_for(stage.id) and \
+                _limit_reached(state, stage.id, config, misses) == "stop":
+            state.status = "needs_human"
+    else:
+        state.attempts += 1
+        if state.attempts >= config.attempts_for(stage.id) or attempt.size_stop:
+            state.status = "needs_human"   # too much rule text goes to a person, never to a retry
