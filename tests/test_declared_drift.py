@@ -31,7 +31,7 @@ def test_one_declaration_covers_one_flag_the_exact_one_first():
 
 def test_every_declared_section_counts():
     gates = GATES + "\n## Declared (passes)\n- arcs.kink.hand_l.f8: a snap on purpose\n"
-    assert _declared(gates) == {"timing.hold.chest.f20", "arcs.kink.hand_l.f8"}
+    assert sorted(_declared(gates)) == ["arcs.kink.hand_l.f8", "timing.hold.chest.f20"]
     assert open_flags([flag("arcs.kink.hand_l.f9")], gates) == []
 
 
