@@ -43,6 +43,19 @@ def test_a_hard_flag_inside_a_fixed_note_is_a_likely_regression(tmp_path):
     assert block[0].startswith("Notes fixed earlier") and any("likely regressions" in b for b in block)
 
 
+def test_a_flag_declared_in_gates_is_not_a_regression(tmp_path):
+    st = ShotState(ledger=[{"stage": "blocking", "note": "critic c: f0-33: the lfoot version", "frames": [0, 33]}])
+    p = tmp_path / "out_blocking" / "body_check"
+    p.mkdir(parents=True)
+    (p / "body_check.json").write_text(json.dumps({"flags": [
+        {"check": "contacts", "frames": [0, 13], "rule": "hard", "what": "toe marker under the floor"},
+        {"check": "foot_slide", "frames": [5, 6], "rule": "hard", "what": "peel slides"}]}), encoding="utf-8")
+    (tmp_path / "GATES.md").write_text("# Gates\n\n## Declared\n- contacts.body.f0: the toe marker, answer B\n",
+                                       encoding="utf-8")
+    reg = regressions(tmp_path, st, "blocking")
+    assert len(reg) == 1 and reg[0].startswith("f5-6 foot_slide"), reg
+
+
 def test_an_old_state_file_has_an_empty_ledger(tmp_path):
     from kei.state import load_state, save_state, state_path
     save_state(tmp_path, ShotState())

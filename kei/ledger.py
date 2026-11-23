@@ -69,15 +69,22 @@ def regressions(shot_dir: Path, state, newest_pass: str | None) -> list[str]:
         flags = json.loads(p.read_text(encoding="utf-8")).get("flags", [])
     except (OSError, ValueError):
         return []
+    hard = [fl for fl in flags if fl.get("rule") == "hard" and not fl.get("note") and (fl.get("frames") or [None])[0]
+            is not None]
+    try:   # a flag GATES.md declares is accepted by the gate, so it is not a regression either
+        from kei.explain import body_id
+        from kei.gates.pipeline import open_flags
+        gates = (Path(shot_dir) / "GATES.md").read_text(encoding="utf-8")
+        hard = open_flags([{**fl, "id": body_id(fl)} for fl in hard], gates)
+    except OSError:
+        pass
     out = []
     for x in state.ledger:
         if not x.get("frames"):
             continue
         a, b = x["frames"]
-        for fl in flags:
-            fa, fb = (fl.get("frames") or [None, None])[:2]
-            if fa is None or fl.get("rule") != "hard" or fl.get("note"):
-                continue
+        for fl in hard:
+            fa, fb = fl["frames"][:2]
             if fa <= b and fb >= a:
                 out.append(f"f{fa}-{fb} {fl.get('check')}: {fl.get('what')} (inside the fixed note "
                            f"\"{x['note'][:90]}\", fixed at {x['stage']})")
