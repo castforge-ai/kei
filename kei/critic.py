@@ -25,6 +25,7 @@ class Verdict:
     records: tuple = ()       # records the critic wants written or brought up to date: a note, never a send-back
     minor: tuple = ()         # small things the animator reads: never a send-back
     earlier: tuple = ()       # (note, "fixed" | "not fixed") for the stage's earlier send-back notes
+    judged: dict | None = None  # {"declared": {...}, "author_notes": {...}}: what the evidence asked the critic to judge
 
 
 class PanelNotes(list):
@@ -125,21 +126,28 @@ def parse_verdict(critic: str, output: str) -> Verdict:
         raw_e = data.get("earlier", {})
         earlier = tuple((str(k).strip(), str(v).strip().lower()) for k, v in
                         (raw_e.items() if isinstance(raw_e, dict) else []) if str(k).strip())
+        judged = {k: data[k] for k in ("declared", "author_notes") if isinstance(data.get(k), dict)} or None
         if data["verdict"] == "pass" or (not notes and (records or minor)):   # records and minor notes never send back
             return Verdict(True, notes if data["verdict"] == "pass" else [], questions, sign_off, records, minor,
-                           earlier)
+                           earlier, judged)
         return Verdict(False, notes or [_label(critic, "sent back with no reason")], questions, sign_off, records,
-                       minor, earlier)
+                       minor, earlier, judged)
     return Verdict(False, [_label(critic, "no verdict line")])
 
 
-def answers_block(answers: list[dict]) -> list[str]:
-    """The author's answers so far, as prompt lines (empty when there are none)."""
+def answers_block(answers: list[dict], stage: str | None = None) -> list[str]:
+    """The author's answers so far, as prompt lines (empty when there are none). An answer settles the question it
+    answered, at the stage it was asked: at a later stage it is history, never a licence to accept a new fault."""
     if not answers:
         return []
-    lines = ["The author's answers to the questions asked so far. A recorded viewing is the author's own:"]
+    lines = ["The author's answers to the questions asked so far. A recorded viewing is the author's own. An answer "
+             "settles only the question it answers, at the stage it was asked: it never accepts a fault measured at a "
+             "later stage, and no declaration may cite it as its reason there:"]
     for a in answers:
-        lines.append(f"- at {a.get('stage', '?')}: asked: {a.get('question', '').strip()}")
+        at = a.get("stage", "?")
+        later = stage is not None and at != stage
+        lines.append(f"- at {at}{' (an earlier stage: history only, it accepts nothing here)' if later else ''}: "
+                     f"asked: {a.get('question', '').strip()}")
         lines.append(f"  answered: {a.get('answer', '').strip()}")
     return lines
 
@@ -167,6 +175,13 @@ def passes_under_review(shot_dir: Path, stage_id: str, changed_plan: list[str] =
     return list(dict.fromkeys(([made] if made else []) + newer))
 
 
+def review_evidence(shot_dir: Path, stage_id: str, changed_plan: list[str] = (), author_notes: list[str] = ()) -> dict:
+    """The evidence and the answers a critic owes for the newest pass under review (kei.review_rigor)."""
+    from kei.review_rigor import evidence
+    passes = [p for p in passes_under_review(shot_dir, stage_id, changed_plan) if p != "blocking"]
+    return evidence(Path(shot_dir), passes[-1] if passes else None, list(author_notes))
+
+
 def critic_prompt(stage: Stage, shot_dir: Path, request: str, changed_plan: list[str], rules: str = "",
                   answers: list[dict] = (), earlier: list[list[str]] = (), author_notes: list[str] = (),
                   fixed: list[str] = ()) -> str:
@@ -184,7 +199,7 @@ def critic_prompt(stage: Stage, shot_dir: Path, request: str, changed_plan: list
     if rules:
         lines += [rules, ""]
     if answers:
-        lines += [*answers_block(answers), ""]
+        lines += [*answers_block(answers, stage.id), ""]
     if author_notes:
         lines += ["The author's notes for this stage, oldest first. Judge the work against them too:",
                   *[f"- {n}" for n in author_notes], ""]
@@ -202,6 +217,9 @@ def critic_prompt(stage: Stage, shot_dir: Path, request: str, changed_plan: list
     mesh = mesh_lines(shot_dir, passes_under_review(shot_dir, stage.id, changed_plan))
     if mesh:
         lines += [*mesh, ""]
+    ev = review_evidence(shot_dir, stage.id, changed_plan, author_notes)
+    if ev["lines"]:
+        lines += [*ev["lines"], ""]
     lines += ["In the shot folder:"]
     lines += [f"- {a}" for a in _artifacts(shot_dir)] or ["- (nothing yet)"]
     if plan_files:
@@ -278,7 +296,7 @@ def _kept(path: Path, sha: str) -> tuple[Verdict, str] | None:
         return None
     v = data["verdict"]
     return Verdict(v["passed"], list(v["notes"]), tuple(v["questions"]), tuple(v["sign_off"]), tuple(v["records"]),
-                   tuple(v["minor"]), tuple(tuple(e) for e in v["earlier"])), data.get("wording", "")
+                   tuple(v["minor"]), tuple(tuple(e) for e in v["earlier"]), v.get("judged")), data.get("wording", "")
 
 
 def _keep(path: Path, sha: str, verdict: Verdict, wording: str) -> None:
@@ -398,11 +416,14 @@ def panel_review(stage: Stage, shot_dir: Path, request: str, critics: list[Seat]
     minor: list[str] = []
     earlier_status: list[tuple] = []
     verdicts = _panel(stage, prompt, Path(shot_dir), critics)
+    ev = review_evidence(shot_dir, stage.id, changed, author_notes)
+    from kei.review_rigor import required_misses
     for seat, (verdict, wording) in zip(critics, verdicts):
         if wording:
             notes.append(wording)
         if not verdict.passed:
             notes += verdict.notes
+        notes += required_misses(seat.name, verdict.judged or {}, ev)   # a declared flag or author note not judged
         questions += [{**q, "from": f"critic {seat.name}"} for q in verdict.questions]
         sign_off += [{"from": f"critic {seat.name}", "check": s} for s in verdict.sign_off]
         records += verdict.records

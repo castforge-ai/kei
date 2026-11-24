@@ -320,10 +320,21 @@ def check(shot: str, deliver: bool = False) -> tuple[list[str], list[str]]:
             except ValueError:
                 body = []
             hard = [{**fl, "id": body_id(fl)} for fl in body if fl.get("rule") == "hard" and not fl.get("note")]
-            for fl in open_flags(hard, gates):
+            still_open = open_flags(hard, gates)
+            for fl in still_open:
                 miss.append("P10 %s (f%s-%s): %s. Fix it, or declare it in GATES.md under \"## Declared\" as "
                             "\"- %s: <reason>\"" % (fl["id"], fl["frames"][0], fl["frames"][1], fl.get("what"),
                                                      fl["id"]))
+            # a declaration must fit the measurement, and a control that snaps in one frame is a fault on the keys
+            from kei.review_rigor import declared_misses, snap_misses
+            try:
+                with open(bc, encoding="utf-8") as f:
+                    whole = json.load(f)
+            except ValueError:
+                whole = {}
+            left = {id(fl) for fl in still_open}
+            miss += declared_misses(shot, [fl for fl in hard if id(fl) not in left], whole)
+            miss += snap_misses(shot, name[len("out_"):])
         log = _read(os.path.join(latest, "SELF_REVIEW_LOG.md")) or ""
         verdicts = [ln for ln in log.splitlines() if "READY" in ln]
         if not verdicts or "NOT READY" in verdicts[-1]:

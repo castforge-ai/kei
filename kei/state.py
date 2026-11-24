@@ -31,6 +31,7 @@ class ShotState:
     questions: list[dict] = field(default_factory=list)   # open questions for the author: from, stage, text, look_at
     answers: list[dict] = field(default_factory=list)     # the author's replies: stage, question, answer, at
     sign_off: list[dict] = field(default_factory=list)    # checks left for the author's sign-off: stage, from, check
+    accepted: list[dict] = field(default_factory=list)    # flags the author accepted by name: id, size, reason, at
 
 
 def state_path(shot_dir: Path) -> Path:

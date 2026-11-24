@@ -526,6 +526,17 @@ def _cmd_fixed(a) -> int:
     return EXIT_DONE
 
 
+def _cmd_accept(a) -> int:
+    from kei.review_rigor import accept
+    try:
+        e = accept(Path(a.shot), a.flag, a.reason)
+    except ValueError as err:
+        print(f"kei accept: {err}")
+        return EXIT_ERROR
+    print(f"accepted {e['id']} at {e['size']:g} on {e['pass']}: a later pass that makes it worse is a fault again")
+    return EXIT_DONE
+
+
 def _cmd_park(a) -> int:
     from kei import chat
     mark = chat.park(Path(a.shot))
@@ -1784,7 +1795,7 @@ def _version() -> str:
 COMMAND_GROUPS = (
     ("set up", ("init", "doctor", "skill", "settings", "characters", "demo")),
     ("run a shot", ("run", "status", "live", "review", "answer", "retry", "bench", "vary")),
-    ("sign off", ("approve", "note", "fixed", "park", "drop", "pack", "share")),
+    ("sign off", ("approve", "note", "fixed", "accept", "park", "drop", "pack", "share")),
     ("characters, apps and files", ("import", "export", "refit-pass", "maya", "unreal", "blender", "shots", "sound", "ref")),
     ("tools the agents use (you rarely need them)", ("render", "bake", "check", "poses", "probe", "keys", "try",
                                                      "sweep", "curves", "pose", "trails", "sheet", "rule", "schema")),
@@ -1801,7 +1812,8 @@ SUMMARIES = {   # one line each for kei --help; a command's own --help has the w
     "sound": "time a shot to a sound or dialogue track",
     "ref": "import licensed motion capture as a measured reference",
     "approve": "sign off a delivered shot", "note": "send a shot back with a note",
-    "fixed": "close open notes as fixed after a new pass", "park": "leave a shot out of the open list for now",
+    "fixed": "close open notes as fixed after a new pass",
+    "accept": "accept one measured fault by name, at its size (only the author can)", "park": "leave a shot out of the open list for now",
     "drop": "drop a shot", "pack": "one file to send a reviewer, notes come back", "share": "check, zip or list shared lessons", "schema": "the JSON Schema of a Kei file", "import": "make a character from your own model", "export": "write a shot or a character "
     "as glTF or FBX", "refit-pass": "play a pass on a character's new proportions (was retarget)", "maya": "animate in Maya", "blender": "animate in Blender",
     "unreal": "animate in your open Unreal Editor", "shots": "look after a folder of shots",
@@ -1983,6 +1995,13 @@ def main(argv: list[str] | None = None) -> int:
     which.add_argument("--not", dest="not_", metavar="N[,N]", help="the numbers of the notes that are not fixed "
                        "(as kei status --open numbers them); they stay open")
     fx.set_defaults(fn=_cmd_fixed)
+    ac = sub.add_parser("accept", help="accept one flag of the newest pass by its id, at its measured size: a fault "
+                        "past what a declaration may cover, or a control snap. A later pass that makes it worse fails "
+                        "again")
+    ac.add_argument("shot")
+    ac.add_argument("flag", help="the flag id the gate names, e.g. foot_slide.body.f14 or control_snap.foot_ctrl.f19")
+    ac.add_argument("--reason", required=True, help="why it is right as it is")
+    ac.set_defaults(fn=_cmd_accept)
     pk = sub.add_parser("park", help="not now: leave the shot out of kei status --open until its next pass")
     pk.add_argument("shot")
     pk.set_defaults(fn=_cmd_park)

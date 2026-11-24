@@ -122,7 +122,7 @@ def stage_prompt(stage: Stage, shot_dir: Path, request: str, misses: list[str], 
         lines += ["", library_rule(refs_library)]
     if answers:
         from kei.critic import answers_block
-        lines += ["", *answers_block(answers)]
+        lines += ["", *answers_block(answers, stage.id)]
     if author_notes:
         lines += ["", "The author's notes for this stage. They come first:"]
         lines += [f"- {m}" for m in author_notes]

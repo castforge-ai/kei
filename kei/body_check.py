@@ -292,14 +292,16 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
         contacts[s] = _runs(on)
         low = [fr["f"] for fr in frames if min(fr["joints"][p.format(s=s)][1] for p in SOLE) < -penetration]
         for a, b in _runs(low):
-            flags.append({"check": "contacts", "side": s, "frames": [a, b],
-                          "what": f"the {s} foot goes under the ground by more than {penetration:.3f} m"})
+            depth = max(-min(fr["joints"][p.format(s=s)][1] for p in SOLE) for fr in frames if a <= fr["f"] <= b)
+            flags.append({"check": "contacts", "side": s, "frames": [a, b], "size": round(depth, 4), "unit": "m",
+                          "what": f"the {s} foot goes under the ground by up to {depth:.3f} m (more than "
+                                  f"{penetration:.3f})"})
         for a, b, lo, hi in _hovers(frames, s, contact_h, slide, hover):
             flags.append({"check": "hover", "side": s, "frames": [a, b],
                           "what": f"the planted {s} foot hovers: its sole's lowest point stays {lo:.3f} to {hi:.3f} m "
                                   f"above the ground, over {hover:.3f}. Lower the foot target, and the root with it "
                                   f"to keep the knee"})
-        bad, top = [], 0.0
+        bad, top, at = [], 0.0, {}
         for f0, f1 in zip(frames, frames[1:]):
             for p in SOLE:
                 n = p.format(s=s)
@@ -309,11 +311,13 @@ def measure(shot: dict, mode: str, proportions: dict, height: float, frames: lis
                     top = max(top, d)
                     if d > slide:
                         bad += [f0["f"], f1["f"]]
+                        at[f1["f"]] = max(at.get(f1["f"], 0.0), d)
         max_slide[s] = round(top, 4)
         slides[s] = _runs(sorted(set(bad)))
         for a, b in slides[s]:
-            flags.append({"check": "foot_slide", "side": s, "frames": [a, b],
-                          "what": f"the planted {s} foot slides along the ground (up to {top:.3f} m a frame, "
+            run = max([v for f, v in at.items() if a <= f <= b] or [0.0])
+            flags.append({"check": "foot_slide", "side": s, "frames": [a, b], "size": round(run, 4), "unit": "m/frame",
+                          "what": f"the planted {s} foot slides along the ground (up to {run:.3f} m a frame, "
                                   f"over {slide:.3f})"})
 
     # contact timing: the weight leaves a foot before it lifts (CNT10) and arrives after it lands (CNT7, CNT9)

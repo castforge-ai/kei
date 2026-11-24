@@ -40,6 +40,10 @@ blocking note, sent back to the animator with its frames ("F12-F18: left toes fo
 - a stall in the timing: frames where the motion stops or crawls that the plan does not hold;
 - a planted foot that slides;
 - a part through another part (a hand through the hip, an arm through the chest).
+When Kei lists "Evidence you must open" below, open the feet plot and every frame it names before anything else.
+A declared flag is judged there, not trusted: its reason holds only when those frames show what it says, at the size
+measured (a peel or a pivot moves the planted point by millimetres, never by many centimetres a frame). Give your
+answer for each one in the verdict line, as that list asks.
 Never hand one of these to the author as a sign-off check or a question: you can see them on the frames, so they are
 yours to judge. The sign-off checks are only for what still frames truly cannot show (the feel at full speed, a
 cycle's seam played ten times, the appeal of the whole). When the list says a pass was NOT rendered on the mesh, or
