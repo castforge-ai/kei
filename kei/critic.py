@@ -178,7 +178,10 @@ def passes_under_review(shot_dir: Path, stage_id: str, changed_plan: list[str] =
 def review_evidence(shot_dir: Path, stage_id: str, changed_plan: list[str] = (), author_notes: list[str] = ()) -> dict:
     """The evidence and the answers a critic owes for the newest pass under review (kei.review_rigor)."""
     from kei.review_rigor import evidence
+    from kei.pose_record import latest_pass
     passes = [p for p in passes_under_review(shot_dir, stage_id, changed_plan) if p != "blocking"]
+    if not passes and stage_id in ("checks", "self_review", "deliver"):   # these judge the newest pass too
+        passes = [p for p in [latest_pass(shot_dir, "passes")] if p]
     return evidence(Path(shot_dir), passes[-1] if passes else None, list(author_notes))
 
 

@@ -79,3 +79,15 @@ def test_an_answer_from_an_earlier_stage_accepts_nothing_later():
     assert "accepts nothing here" in lines[1]
     assert "accepts nothing here" not in answers_block([{"stage": "passes", "question": "q", "answer": "a"}],
                                                         "passes")[1]
+
+
+def test_the_late_stages_judge_the_newest_pass(tmp_path):
+    from kei.critic import review_evidence
+    p = tmp_path / "out_p4"
+    (p / "body_check").mkdir(parents=True)
+    (p / "shot.json").write_text(json.dumps({"keys": [{"f": 0}]}), encoding="utf-8")
+    (p / "body_check" / "body_check.json").write_text(json.dumps({"frames": 30, "flags": [_slide(0.01)]}),
+                                                      encoding="utf-8")
+    (tmp_path / "GATES.md").write_text("## Declared\n- foot_slide.body.f14: a pivot\n", encoding="utf-8")
+    for stage in ("checks", "self_review", "deliver"):
+        assert review_evidence(tmp_path, stage)["declared"] == ["foot_slide.body.f14"], stage
