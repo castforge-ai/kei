@@ -24,6 +24,8 @@ WORSE_ABS = 0.005
 ACCEPT_TOL = 1.1  # an author's acceptance covers the size they accepted, and a little more
 SNAP_DEG, SNAP_CM = 25.0, 8.0   # a control's change in one frame that counts as a snap ...
 SNAP_RATIO = 2.0                # ... when it is this many times its neighbours' change
+RETURN_RATIO = 2.5              # a control that drops back to rest this many times faster than it built up
+STALL_MOVING, STALL_STILL = 0.008, 0.003   # m a frame: a heel rising, and a heel that has stopped
 FEET_CHECKS = ("foot_slide", "contacts", "hover")
 MARGIN = 2        # frames shown either side of a flagged range
 
@@ -120,6 +122,93 @@ def control_snaps(shot: dict) -> list[dict]:
                         "unit": "deg" if ".rotation." in c else "cm", "id": f"control_snap.{ctrl}.f{int(f1)}",
                         "what": f"{c} jumps {v0:.1f} -> {v1:.1f} in one frame (f{int(f0)}-f{int(f1)}) while the "
                                 f"frames around it move {max(near or [0]):.1f} a frame"})
+        out += _fast_returns(c, vals, thr, keys)
+    seen, uniq = set(), []
+    for s in out:   # one entry per control and frame
+        if s["id"] not in seen:
+            seen.add(s["id"])
+            uniq.append(s)
+    return uniq
+
+
+def _fast_returns(c: str, vals: list, thr: float, keys: list) -> list[dict]:
+    """A control that builds up away from its rest over several frames, then drops back to rest in a few: the
+    hand-off to another control is squeezed into those frames, and the part stalls or lurches there."""
+    rest, out, i = vals[0][1], [], 0
+    away = [abs(v - rest) > 1.0 for _, v in vals]
+    while i < len(vals):
+        if not away[i]:
+            i += 1
+            continue
+        j = i
+        while j < len(vals) and away[j]:
+            j += 1
+        if j >= len(vals) or i == 0:    # never comes back, or starts away
+            i = j
+            continue
+        seg = vals[i - 1:j + 1]          # from the last frame at rest to the first frame back at rest
+        k = max(range(len(seg)), key=lambda n: abs(seg[n][1] - rest))
+        amp = abs(seg[k][1] - rest)
+        rise, fall = seg[k][0] - seg[0][0], seg[-1][0] - seg[k][0]
+        if amp >= thr and 0 < fall <= 3 and rise > 0 and amp / fall >= RETURN_RATIO * amp / rise:
+            f0, f1 = int(seg[k][0]), int(seg[-1][0])
+            ctrl = c.split(".")[0]
+            others = _movers(keys, c, f0, f1)
+            out.append({"check": "control_snap", "channel": c, "frames": [f0, f1], "size": round(amp / fall, 2),
+                        "unit": "deg" if ".rotation." in c else "cm", "id": f"control_snap.{ctrl}.f{f1}",
+                        "what": f"{c} builds to {seg[k][1]:.1f} over {rise:g} frames, then drops back to rest in "
+                                f"{fall:g} (f{f0}-f{f1})" + (f", while {others} take over in the same frames"
+                                                              if others else "")})
+        i = j
+    return out
+
+
+def _movers(keys: list, skip: str, f0: int, f1: int) -> str:
+    """The channels that change most over f0-f1, other than skip: the controls a hand-off goes to."""
+    a = next((k for k in keys if k["f"] == f0), None)
+    b = next((k for k in keys if k["f"] == f1), None)
+    if not a or not b:
+        return ""
+    moved = sorted(((abs(b[c] - a[c]), c) for c in a if c != skip and c in b and ".scale." not in c
+                    and isinstance(a[c], (int, float)) and isinstance(b[c], (int, float))
+                    and c.split(".")[0] != skip.split(".")[0] and _same_limb(c, skip) and abs(b[c] - a[c]) >= 10),
+                   reverse=True)
+    return ", ".join(f"{c} ({a[c]:.1f} -> {b[c]:.1f})" for _, c in moved[:2])
+
+
+def _same_limb(a: str, b: str) -> bool:
+    """Two controls on the same limb: the same side and the same limb word (foot, leg, ball, toe, hand, arm)."""
+    side = lambda c: "l" if "_l_" in c or c.endswith("_l") else "r" if "_r_" in c or c.endswith("_r") else ""  # noqa: E731
+    limb = lambda c: "leg" if any(w in c for w in ("foot", "leg", "ball", "toe", "heel", "knee")) else         "arm" if any(w in c for w in ("hand", "arm", "elbow", "wrist")) else ""   # noqa: E731
+    return bool(side(a)) and side(a) == side(b) and limb(a) == limb(b) != ""
+
+
+def lift_stalls(joints: dict, contact_h: float = 0.02) -> list[dict]:
+    """A foot that stalls mid-lift: the heel rises, stops for two frames or more, then rises again. On the screen the
+    foot sticks to the floor and then lurches. Read on the joints, so it holds for any rig."""
+    frames = joints.get("frames") or []
+    out = []
+    for s in "lr":
+        name = f"heel_{s}"
+        if not frames or name not in frames[0]["joints"]:
+            continue
+        h = [fr["joints"][name][1] for fr in frames]
+        d = [b - a for a, b in zip(h, h[1:])]
+        i = 0
+        while i < len(d):
+            if d[i] > STALL_MOVING:
+                j = i + 1
+                while j < len(d) and abs(d[j]) <= STALL_STILL:
+                    j += 1
+                if j - (i + 1) >= 2 and j < len(d) and d[j] > STALL_MOVING:
+                    a, b = frames[i + 1]["f"], frames[j]["f"]
+                    out.append({"check": "lift_stall", "side": s, "frames": [a, b], "size": round(h[j + 1] - h[i + 1], 4),
+                                "unit": "m", "id": f"lift_stall.{s}.f{a}",
+                                "what": f"the {s} heel rises, stops for {b - a} frames (f{a}-f{b}), then rises again: "
+                                        f"the foot sticks to the floor and lurches"})
+                    i = j
+                    continue
+            i += 1
     return out
 
 
@@ -131,10 +220,22 @@ def snap_misses(shot_dir: Path, pass_name: str) -> list[str]:
     except (OSError, ValueError):
         return []
     acc = accepted_sizes(shot_dir)
-    return [f"P10 {s['id']}: {s['what']}: the control resets or hands off in one frame, and the part pops. Spread the "
-            f"change over the frames around it, or key the controls that take over so the part keeps its path. Only "
-            f"the author can accept a snap (kei accept <shot> {s['id']})"
-            for s in control_snaps(shot) if not (s["id"] in acc and s["size"] <= acc[s["id"]] * ACCEPT_TOL)]
+    ok = lambda s: s["id"] in acc and s["size"] <= acc[s["id"]] * ACCEPT_TOL   # noqa: E731
+    miss = [f"P10 {s['id']}: {s['what']}: the control resets or hands off too fast, and the part pops or stalls. "
+            f"Spread the hand-off over several frames, with the control that takes over moving as this one returns, "
+            f"so the part keeps its path. Only the author can accept it (kei accept <shot> {s['id']})"
+            for s in control_snaps(shot) if not ok(s)]
+    miss += [f"P10 {s['id']}: {s['what']}. Keep the lift moving: the heel peels on a steady arc while the ball "
+             f"pivots, then the foot leaves. Only the author can accept it (kei accept <shot> {s['id']})"
+             for s in _stalls(shot_dir, pass_name) if not ok(s)]
+    return miss
+
+
+def _stalls(shot_dir: Path, pass_name: str) -> list[dict]:
+    try:
+        return lift_stalls(json.loads((Path(shot_dir) / f"out_{pass_name}" / "joints.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return []
 
 
 # --- the critics' evidence -----------------------------------------------------------------------------------------
@@ -257,7 +358,7 @@ def evidence(shot_dir: Path, pass_name: str | None, author_notes: list[str] = ()
         rows.append({"id": fl["id"], "frames": fl["frames"][:2], "what": fl.get("what", ""), "size": fl.get("size"),
                      "declared": declared, "reason": why if declared else None})
     rows += [{"id": s["id"], "frames": s["frames"], "what": s["what"], "size": s["size"], "declared": False,
-              "reason": None} for s in control_snaps(shot)]
+              "reason": None} for s in control_snaps(shot) + _stalls(shot_dir, pass_name)]
     noted = [(n, note_frames(n)) for n in author_notes]
     noted = [(n, fr) for n, fr in noted if fr]
     if not rows and not noted:
@@ -334,7 +435,7 @@ def accept(shot_dir: Path, flag_id: str, reason: str) -> dict:
     except (OSError, ValueError):
         shot = {}
     found = [fl for fl in body.get("flags") or [] if _flag_id(fl) == flag_id] + \
-            [s for s in control_snaps(shot) if s["id"] == flag_id]
+            [s for s in control_snaps(shot) + _stalls(shot_dir, p) if s["id"] == flag_id]
     if not found:
         raise ValueError(f"{p} has no flag {flag_id}")
     size = max(float(fl.get("size") or 0.0) for fl in found)

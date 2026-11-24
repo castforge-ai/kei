@@ -91,3 +91,21 @@ def test_the_late_stages_judge_the_newest_pass(tmp_path):
     (tmp_path / "GATES.md").write_text("## Declared\n- foot_slide.body.f14: a pivot\n", encoding="utf-8")
     for stage in ("checks", "self_review", "deliver"):
         assert review_evidence(tmp_path, stage)["declared"] == ["foot_slide.body.f14"], stage
+
+
+def test_a_hand_off_squeezed_into_two_frames_is_caught():
+    keys = [{"f": f, "foot_roll_r_ctrl.rotation.z": r, "foot_r_ik_ctrl.rotation.x": x}
+            for f, (r, x) in enumerate([(0, 0), (-5, 0), (-10, 0), (-16, 0), (-22, 1), (-28, 1), (-14, 18), (0, 34),
+                                        (0, 22), (0, 10), (0, 0)])]
+    snaps = control_snaps({"keys": keys})
+    assert [s["id"] for s in snaps] == ["control_snap.foot_roll_r_ctrl.f7"]
+    assert "foot_r_ik_ctrl.rotation.x" in snaps[0]["what"]
+
+
+def test_a_heel_that_stops_mid_lift_stalls():
+    from kei.review_rigor import lift_stalls
+    heel = [0.057, 0.071, 0.083, 0.106, 0.131, 0.153, 0.170, 0.169, 0.168, 0.186, 0.194]
+    frames = [{"f": f, "joints": {"heel_r": [0, h, 0]}} for f, h in enumerate(heel)]
+    assert [s["id"] for s in lift_stalls({"frames": frames})] == ["lift_stall.r.f6"]
+    steady = [{"f": f, "joints": {"heel_r": [0, 0.05 + 0.01 * f, 0]}} for f in range(10)]
+    assert lift_stalls({"frames": steady}) == []
